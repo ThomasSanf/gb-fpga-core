@@ -1,0 +1,316 @@
+$date
+2025-12-05T15:32+0000
+$end
+$version
+0.2
+$end
+$comment
+
+$end
+$timescale 1ns  $end
+$scope module GameBoyTop $end
+ $var wire 8 # io_dbg_H $end
+ $var wire 8 & io_dbg_L $end
+ $var wire 8 ' io_dbg_A $end
+ $var wire 8 ( io_dbg_B $end
+ $var wire 8 ) io_dbg_E $end
+ $var wire 8 * io_dbg_C $end
+ $var wire 8 + io_dbg_D $end
+ $var wire 1 0 bus $end
+ $var wire 8 H io_dbg_opcode $end
+ $var wire 1 K reset $end
+ $var wire 1 R cpu $end
+ $var wire 1 S clock $end
+ $var wire 16 T io_dbg_pc $end
+  $scope module bus $end
+   $var wire 1 1 clock $end
+   $var wire 1 2 inRange $end
+   $var wire 8 4 io_cpuReadData $end
+   $var wire 1 7 io_cpuRead $end
+   $var wire 16 I io_cpuAddress $end
+   $var wire 8 L rom $end
+    $scope module rom $end
+      $scope module romData $end
+       $var wire 1 / clk $end
+       $var wire 1 5 en $end
+       $var wire 8 G data $end
+       $var wire 15 M addr $end
+      $upscope $end
+    $upscope $end
+  $upscope $end
+  $scope module cpu $end
+   $var wire 1 ! clock $end
+   $var wire 8 " L $end
+   $var wire 1 $ isLdAFromHL $end
+   $var wire 8 % H $end
+   $var wire 1 , isLdRR $end
+   $var wire 8 - fetched $end
+   $var wire 16 . io_memAddress $end
+   $var wire 1 3 reset $end
+   $var wire 16 6 PC $end
+   $var wire 1 8 io_memRead $end
+   $var wire 3 9 immDst $end
+   $var wire 8 : io_dbg_A $end
+   $var wire 8 ; io_dbg_B $end
+   $var wire 8 < io_dbg_C $end
+   $var wire 8 = io_dbg_D $end
+   $var wire 8 > io_dbg_E $end
+   $var wire 16 ? io_dbg_pc $end
+   $var wire 8 @ io_dbg_H $end
+   $var wire 8 A E $end
+   $var wire 8 B D $end
+   $var wire 8 C C $end
+   $var wire 8 D B $end
+   $var wire 8 E A $end
+   $var wire 8 F io_dbg_L $end
+   $var wire 8 J opcode $end
+   $var wire 8 N io_dbg_opcode $end
+   $var wire 8 O srcIdx $end
+   $var wire 5 P dstIdx $end
+   $var wire 8 Q res_1 $end
+   $var wire 8 U io_memReadData $end
+   $var wire 8 V res $end
+   $var wire 3 W state $end
+  $upscope $end
+$upscope $end
+$enddefinitions $end
+$dumpvars
+00
+01
+02
+03
+07
+08
+b0000000000000000 .
+b000000000000000 M
+b0000000000000000 6
+0K
+b00000000 J
+0R
+0S
+15
+b00000000 G
+b00000000 F
+b00000000 H
+b00000000 C
+b00000000 B
+b00000000 E
+b00000000 D
+b00000000 >
+b00000000 A
+b00000000 @
+b000 W
+b00000100 L
+b00000000 V
+b00000000 U
+b00000000 O
+b00000000 N
+b00000000 Q
+b00000 P
+b00000000 +
+b00000000 *
+b00000000 -
+b00000000 '
+b00000000 &
+b00000000 )
+b00000000 (
+b00000000 #
+b00000000 "
+b00000000 %
+b00000000 ;
+b00000000 :
+b000 9
+b00000000 =
+b00000000 <
+b00000000 4
+b0000000000000000 ?
+b0000000000000000 I
+0!
+0$
+b0000000000000000 T
+0,
+0/
+$end
+#0
+b11111111 Q
+12
+13
+b00000100 4
+b00000100 U
+b00000001 V
+17
+b00000100 G
+18
+1K
+#1
+1!
+11
+1S
+b00000100 -
+1/
+#6
+0!
+01
+03
+0S
+0K
+0/
+#11
+1!
+11
+1S
+b00000000 4
+b00000000 U
+07
+b001 W
+08
+1/
+#16
+0!
+01
+0S
+0/
+#21
+1!
+11
+1S
+b010 W
+b00000100 H
+b00000100 J
+b00000100 N
+1/
+b00000100 O
+#26
+0!
+01
+0S
+0/
+#31
+1!
+b00000001 D
+b00000001 (
+b0000000000000001 I
+b000000000000001 M
+b0000000000000001 .
+1/
+11
+b00000000 Q
+1S
+b00000100 4
+b0000000000000001 T
+b00000100 U
+b0000000000000001 6
+b00000010 V
+17
+b000 W
+18
+b00000001 ;
+b0000000000000001 ?
+#36
+0!
+01
+0S
+0/
+#41
+1!
+11
+1S
+b00000000 4
+b00000000 U
+07
+b001 W
+08
+1/
+#46
+0!
+01
+0S
+0/
+#51
+1!
+11
+1S
+b010 W
+1/
+#56
+0!
+01
+0S
+0/
+#61
+1!
+b00000010 D
+b00000010 (
+b0000000000000010 I
+b000000000000010 M
+b0000000000000010 .
+1/
+11
+b00000001 Q
+1S
+b00000100 4
+b0000000000000010 T
+b00000100 U
+b0000000000000010 6
+b00000011 V
+17
+b000 W
+18
+b00000010 ;
+b0000000000000010 ?
+#66
+0!
+01
+0S
+0/
+#71
+1!
+11
+1S
+b00000000 4
+b00000000 U
+07
+b001 W
+08
+1/
+#76
+0!
+01
+0S
+0/
+#81
+1!
+11
+1S
+b010 W
+1/
+#86
+0!
+01
+0S
+0/
+#91
+1!
+b00000011 D
+b00000000 G
+b00000011 (
+b0000000000000011 I
+b000000000000011 M
+b0000000000000011 .
+1/
+11
+b00000010 Q
+1S
+b0000000000000011 T
+b0000000000000011 6
+b00000100 V
+17
+b000 W
+18
+b00000011 ;
+b0000000000000011 ?
+#96
+0!
+01
+0S
+0/

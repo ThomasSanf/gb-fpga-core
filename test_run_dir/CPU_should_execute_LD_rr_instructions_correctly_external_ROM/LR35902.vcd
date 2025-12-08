@@ -1,0 +1,208 @@
+$date
+2025-12-05T12:27+0000
+$end
+$version
+0.2
+$end
+$comment
+
+$end
+$timescale 1ns  $end
+$scope module LR35902 $end
+ $var wire 8 ! io_dbg_opcode $end
+ $var wire 1 " io_memRead $end
+ $var wire 2 # state $end
+ $var wire 8 $ res_1 $end
+ $var wire 8 % io_dbg_B $end
+ $var wire 1 & reset $end
+ $var wire 8 ' A $end
+ $var wire 8 ( B $end
+ $var wire 8 ) C $end
+ $var wire 8 * D $end
+ $var wire 8 + E $end
+ $var wire 8 , H $end
+ $var wire 8 - L $end
+ $var wire 8 . fetched $end
+ $var wire 8 / srcIdx $end
+ $var wire 8 0 opcode $end
+ $var wire 16 1 io_memAddress $end
+ $var wire 5 2 dstIdx $end
+ $var wire 8 3 res $end
+ $var wire 1 4 isLdRR $end
+ $var wire 1 5 clock $end
+ $var wire 1 6 io_memWrite $end
+ $var wire 8 7 io_memWriteData $end
+ $var wire 8 8 value $end
+ $var wire 16 9 io_dbg_pc $end
+ $var wire 8 : io_memReadData $end
+ $var wire 16 ; PC $end
+$upscope $end
+$enddefinitions $end
+$dumpvars
+b00000000 +
+b00000000 *
+b00000000 -
+b00000000 ,
+04
+b00000000 '
+05
+06
+b00000000 )
+b00000000 (
+b00000000 %
+b00000000 $
+b00000000 !
+b0000000000000000 1
+b00000000 :
+b00000000 7
+b00000000 8
+b0000000000000000 9
+b00000000 3
+b00000000 /
+b00000000 .
+b0000000000000000 ;
+b00 #
+b00000000 0
+b00000 2
+0"
+0&
+$end
+#0
+1"
+b00000001 3
+b11111111 $
+1&
+#1
+15
+#6
+05
+0&
+b00001110 :
+#11
+0"
+b01 #
+15
+b00001110 .
+#16
+05
+#21
+b00001110 0
+b00001110 !
+b00001 2
+b10 #
+15
+b00000110 /
+#26
+05
+#31
+15
+#36
+05
+#41
+15
+#46
+05
+#51
+15
+#56
+05
+#61
+15
+#66
+05
+#71
+15
+#76
+05
+#81
+15
+#86
+05
+#91
+15
+#96
+05
+#101
+15
+#106
+05
+#111
+15
+#116
+05
+#121
+15
+#126
+05
+#131
+15
+#136
+05
+#141
+15
+#146
+05
+#151
+15
+#156
+05
+#161
+15
+#166
+05
+#171
+15
+#176
+05
+#181
+15
+#186
+05
+#191
+15
+#196
+05
+#201
+15
+#206
+05
+#211
+15
+#216
+05
+#221
+15
+#226
+05
+#231
+15
+#236
+05
+#241
+15
+#246
+05
+#251
+15
+#256
+05
+#261
+15
+#266
+05
+#271
+15
+#276
+05
+#281
+15
+#286
+05
+#291
+15
+#296
+05
+#301
+15
+#306
+05

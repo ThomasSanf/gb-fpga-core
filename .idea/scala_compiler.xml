@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <option name="separateProdTestSources" value="true" />
+    <profile name="sbt 1" modules="gb-fpga-core" />
+    <profile name="sbt 2" modules="gb-fpga-core.main">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-Xplugin-require:chiselplugin" />
+      </parameters>
+      <plugins>
+        <plugin path="C:\Users\User\AppData\Local\Coursier\Cache\v1\https\repo1.maven.org\maven2\edu\berkeley\cs\chisel3-plugin_2.13.10\3.5.6\chisel3-plugin_2.13.10-3.5.6.jar" />
+      </plugins>
+    </profile>
+    <profile name="sbt 3" modules="gb-fpga-core.test">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-Xplugin-require:chiselplugin" />
+        <parameter value="-Xplugin-require:chiselplugin" />
+      </parameters>
+      <plugins>
+        <plugin path="C:\Users\User\AppData\Local\Coursier\Cache\v1\https\repo1.maven.org\maven2\edu\berkeley\cs\chisel3-plugin_2.13.10\3.5.6\chisel3-plugin_2.13.10-3.5.6.jar" />
+      </plugins>
+    </profile>
+  </component>
+</project>
