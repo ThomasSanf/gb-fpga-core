@@ -28,6 +28,18 @@ class MemoryMapIO extends Bundle {
   val ppuLY        = Input(UInt(8.W))
   val ppuVblankIRQ = Input(Bool())
   val ppuLcdStatIRQ = Input(Bool())
+
+  // PPU control registers (outputs to PPU)
+  val ppuLcdc = Output(UInt(8.W))  // FF40 - LCD Control
+  val ppuStat = Output(UInt(8.W))  // FF41 - LCD Status
+  val ppuScy  = Output(UInt(8.W))  // FF42 - Scroll Y
+  val ppuScx  = Output(UInt(8.W))  // FF43 - Scroll X
+  val ppuLyc  = Output(UInt(8.W))  // FF45 - LY Compare
+  val ppuBgp  = Output(UInt(8.W))  // FF47 - BG Palette
+  val ppuObp0 = Output(UInt(8.W))  // FF48 - OBJ Palette 0
+  val ppuObp1 = Output(UInt(8.W))  // FF49 - OBJ Palette 1
+  val ppuWy   = Output(UInt(8.W))  // FF4A - Window Y
+  val ppuWx   = Output(UInt(8.W))  // FF4B - Window X
 }
 
 /**
@@ -283,4 +295,18 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   // ============================================================
   io.ieReg := regIE
   io.ifReg := ioRegs.io.ifReg  // Fixed: Get IF from IORegisters module
+
+  // ============================================================
+  // PPU CONTROL REGISTERS OUTPUT
+  // ============================================================
+  io.ppuLcdc := ioRegs.io.ppuLcdc
+  io.ppuStat := ioRegs.io.ppuStat
+  io.ppuScy  := ioRegs.io.ppuScy
+  io.ppuScx  := ioRegs.io.ppuScx
+  io.ppuLyc  := ioRegs.io.ppuLyc
+  io.ppuBgp  := ioRegs.io.ppuBgp
+  io.ppuObp0 := ioRegs.io.ppuObp0
+  io.ppuObp1 := ioRegs.io.ppuObp1
+  io.ppuWy   := ioRegs.io.ppuWy
+  io.ppuWx   := ioRegs.io.ppuWx
 }

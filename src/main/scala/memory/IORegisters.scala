@@ -28,6 +28,18 @@ class IORegistersIO extends Bundle {
   // Serial output (for test ROMs)
   val serialOut = Output(UInt(8.W))  // Character output
   val serialValid = Output(Bool())   // Valid character ready
+
+  // PPU control registers (for full PPU)
+  val ppuLcdc = Output(UInt(8.W))  // FF40 - LCD Control
+  val ppuStat = Output(UInt(8.W))  // FF41 - LCD Status
+  val ppuScy  = Output(UInt(8.W))  // FF42 - Scroll Y
+  val ppuScx  = Output(UInt(8.W))  // FF43 - Scroll X
+  val ppuLyc  = Output(UInt(8.W))  // FF45 - LY Compare
+  val ppuBgp  = Output(UInt(8.W))  // FF47 - BG Palette
+  val ppuObp0 = Output(UInt(8.W))  // FF48 - OBJ Palette 0
+  val ppuObp1 = Output(UInt(8.W))  // FF49 - OBJ Palette 1
+  val ppuWy   = Output(UInt(8.W))  // FF4A - Window Y
+  val ppuWx   = Output(UInt(8.W))  // FF4B - Window X
 }
 
 class IORegisters extends Module {
@@ -272,4 +284,16 @@ class IORegisters extends Module {
   // Output serial data
   io.serialOut := serialOutReg
   io.serialValid := serialValidReg
+
+  // Output PPU control registers
+  io.ppuLcdc := regLCDC
+  io.ppuStat := regSTAT
+  io.ppuScy  := regSCY
+  io.ppuScx  := regSCX
+  io.ppuLyc  := regLYC
+  io.ppuBgp  := regBGP
+  io.ppuObp0 := regOBP0
+  io.ppuObp1 := regOBP1
+  io.ppuWy   := regWY
+  io.ppuWx   := regWX
 }

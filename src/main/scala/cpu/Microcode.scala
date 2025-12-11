@@ -125,6 +125,32 @@ object Microcode {
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
+      // LD rr,nn — 16-bit immediate load (0x01, 0x11, 0x21, 0x31)
+      // PATCH FIX #1 - This was completely missing!
+      // ----------------------------------------------------------
+    }.elsewhen((IR & "hCF".U) === "h01".U) {
+      val rr = (IR >> 4) & 3.U
+
+      switch(rr) {
+        is(0.U) {  // LD BC,nn (0x01)
+          out.C := imm16_in(7, 0)
+          out.B := imm16_in(15, 8)
+        }
+        is(1.U) {  // LD DE,nn (0x11)
+          out.E := imm16_in(7, 0)
+          out.D := imm16_in(15, 8)
+        }
+        is(2.U) {  // LD HL,nn (0x21)
+          out.L := imm16_in(7, 0)
+          out.H := imm16_in(15, 8)
+        }
+        is(3.U) {  // LD SP,nn (0x31)
+          out.SP := imm16_in
+        }
+      }
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // ----------------------------------------------------------
       // INC rr — 16-bit increment (0x03, 0x13, 0x23, 0x33)
       // ----------------------------------------------------------
     }.elsewhen((IR & "hCF".U) === "h03".U) {
@@ -275,7 +301,10 @@ object Microcode {
       // ----------------------------------------------------------
       // LD r,r' — 1 cycle
       // ----------------------------------------------------------
-    }.elsewhen((IR >= "h40".U && IR <= "h7F".U) && (IR =/= "h76".U)) {
+    }.elsewhen((IR >= "h40".U && IR <= "h7F".U) &&
+      (IR =/= "h76".U) &&                      // Not HALT
+      ((IR & "h07".U) =/= "h06".U) &&         // Not (HL) as source/dest
+      ((IR & "hF8".U) =/= "h70".U)) {
       val dst = (IR >> 3) & 7.U
       val src = IR & 7.U
       writeReg(dst, readReg(src))
@@ -290,15 +319,17 @@ object Microcode {
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
-      // LD (HL),r
+      // LD (HL),r — Store register to (HL)
+      // PATCH FIX #2 - Simplified to single M-cycle
+      // Memory write should happen at T-cycle 2 (Game Boy timing)
       // ----------------------------------------------------------
     }.elsewhen((IR >= "h70".U && IR <= "h75".U) || IR === "h77".U) {
       val src = IR & 7.U
-      when(tcycle === 0.U) {
-        io.memAddr      := HL
-        io.memWrite     := true.B
-        io.memWriteData := readReg(src)
-      }
+
+      io.memAddr      := HL
+      io.memWrite     := (tcycle === 2.U)  // Write at T-cycle 2
+      io.memWriteData := readReg(src)
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
@@ -412,17 +443,18 @@ object Microcode {
       }
 
       // ----------------------------------------------------------
-      // LD r,(HL)
+      // LD r,(HL) — Load from (HL) to register
+      // PATCH FIX #3 - Simplified to single M-cycle
       // ----------------------------------------------------------
     }.elsewhen(IR === "h46".U || IR === "h4E".U || IR === "h56".U ||
       IR === "h5E".U || IR === "h66".U || IR === "h6E".U || IR === "h7E".U) {
       val dst = (IR >> 3) & 7.U
-      switch(tcycle) {
-        is(0.U) { io.memAddr := HL; io.memRead := true.B }
-        is(1.U) { io.memRead := true.B }
-        is(2.U) { writeReg(dst, io.memReadData) }
-        is(3.U) { out.done := true.B }
-      }
+      // Memory read active throughout M-cycle
+      io.memAddr := HL
+      io.memRead := true.B
+      // Write register with memory data (output stays stable for writeback at T3)
+      writeReg(dst, io.memReadData)
+      when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
       // ADD A,r (0x80-0x87)
@@ -602,6 +634,7 @@ object Microcode {
 
       // ----------------------------------------------------------
       // PUSH rr — Push to stack (0xC5, 0xD5, 0xE5, 0xF5)
+      // FIX: Make SP updates unconditional for stable writeback at T3
       // ----------------------------------------------------------
     }.elsewhen((IR & "hCF".U) === "hC5".U) {
       val rr = (IR >> 4) & 3.U
@@ -617,22 +650,27 @@ object Microcode {
           val sp1 = SP_in - 1.U
           io.memAddr      := sp1
           io.memWrite     := true.B
-          io.memWriteData := regPair(15, 8)
-          out.SP := sp1
-          when(tcycle === 3.U) { out.next_mcycle := 1.U }
+          io.memWriteData := regPair(15, 8)  // HIGH byte first
+          out.SP := sp1                       // FIX: Unconditional - stable for T3 writeback
+          when(tcycle === 3.U) {
+            out.next_mcycle := 1.U
+          }
         }
         is(1.U) {
           val sp2 = SP_in - 1.U
           io.memAddr      := sp2
           io.memWrite     := true.B
-          io.memWriteData := regPair(7, 0)
-          out.SP := sp2
-          when(tcycle === 3.U) { out.done := true.B }
+          io.memWriteData := regPair(7, 0)   // LOW byte second
+          out.SP := sp2                       // FIX: Unconditional - stable for T3 writeback
+          when(tcycle === 3.U) {
+            out.done := true.B
+          }
         }
       }
 
       // ----------------------------------------------------------
       // POP rr — Pop from stack (0xC1, 0xD1, 0xE1, 0xF1)
+      // FIX: Make all outputs unconditional for stable writeback at T3
       // ----------------------------------------------------------
     }.elsewhen((IR & "hCF".U) === "hC1".U) {
       val rr = (IR >> 4) & 3.U
@@ -641,27 +679,26 @@ object Microcode {
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) { out.imm8 := io.memReadData }
+          out.imm8 := io.memReadData          // FIX: Unconditional
+          out.SP := SP_in + 1.U               // FIX: Unconditional
           when(tcycle === 3.U) {
-            out.SP := SP_in + 1.U
             out.next_mcycle := 1.U
           }
         }
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) {
-            val low = imm8_in
-            val high = io.memReadData
-            switch(rr) {
-              is(0.U) { out.B := high; out.C := low }
-              is(1.U) { out.D := high; out.E := low }
-              is(2.U) { out.H := high; out.L := low }
-              is(3.U) { out.A := high; out.F := low }
-            }
+          // FIX: Write registers unconditionally (data stable for T3 writeback)
+          val low = imm8_in
+          val high = io.memReadData
+          switch(rr) {
+            is(0.U) { out.B := high; out.C := low }
+            is(1.U) { out.D := high; out.E := low }
+            is(2.U) { out.H := high; out.L := low }
+            is(3.U) { out.A := high; out.F := low }
           }
+          out.SP := SP_in + 1.U               // FIX: Unconditional
           when(tcycle === 3.U) {
-            out.SP := SP_in + 1.U
             out.done := true.B
           }
         }
@@ -677,7 +714,9 @@ object Microcode {
           io.memAddr      := sp1
           io.memWrite     := true.B
           io.memWriteData := PC_in(15, 8)
-          out.SP := sp1
+          when(tcycle === 2.U) {
+            out.SP := sp1
+          }
           when(tcycle === 3.U) { out.next_mcycle := 1.U }
         }
         is(1.U) {
@@ -685,7 +724,9 @@ object Microcode {
           io.memAddr      := sp2
           io.memWrite     := true.B
           io.memWriteData := PC_in(7, 0)
-          out.SP := sp2
+          when(tcycle === 2.U) {
+            out.SP := sp2
+          }
           when(tcycle === 3.U) { out.next_mcycle := 2.U }
         }
         is(2.U) {
@@ -760,7 +801,9 @@ object Microcode {
           io.memAddr      := sp1
           io.memWrite     := true.B
           io.memWriteData := PC_in(15, 8)
-          out.SP := sp1
+          when(tcycle === 2.U) {
+            out.SP := sp1
+          }
           when(tcycle === 3.U) { out.next_mcycle := 1.U }
         }
         is(1.U) {
@@ -768,8 +811,10 @@ object Microcode {
           io.memAddr      := sp2
           io.memWrite     := true.B
           io.memWriteData := PC_in(7, 0)
-          out.SP := sp2
           out.PC := vec
+          when(tcycle === 2.U) {
+            out.SP := sp2
+          }
           when(tcycle === 3.U) { out.done := true.B }
         }
       }
@@ -852,7 +897,9 @@ object Microcode {
             io.memAddr      := sp1
             io.memWrite     := true.B
             io.memWriteData := PC_in(15, 8)
-            out.SP := sp1
+            when(tcycle === 2.U) {
+              out.SP := sp1
+            }
             when(tcycle === 3.U) { out.next_mcycle := 1.U }
           }
           is(1.U) {
@@ -860,8 +907,10 @@ object Microcode {
             io.memAddr      := sp2
             io.memWrite     := true.B
             io.memWriteData := PC_in(7, 0)
-            out.SP := sp2
             out.PC := imm16_in
+            when(tcycle === 2.U) {
+              out.SP := sp2
+            }
             when(tcycle === 3.U) { out.done := true.B }
           }
         }
