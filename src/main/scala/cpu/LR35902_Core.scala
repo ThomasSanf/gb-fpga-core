@@ -50,12 +50,14 @@ class LR35902_Core extends Module {
   val H = RegInit(0x01.U(8.W))
   val L = RegInit(0x4D.U(8.W))
 
-  val PC = RegInit(0x0100.U(16.W))
+  val PC = RegInit(0x0000.U(16.W))
   val SP = RegInit(0xFFFE.U(16.W))
 
   val IR    = RegInit(0.U(8.W))
+  val IR2   = RegInit(0.U(8.W))  // CB prefix second byte
   val imm8  = RegInit(0.U(8.W))
   val imm16 = RegInit(0.U(16.W))
+  val CB_imm8 = RegInit(0.U(8.W))  // CB result carrier
 
   val IME         = RegInit(false.B)
   val IME_pending = RegInit(false.B)
@@ -63,7 +65,7 @@ class LR35902_Core extends Module {
   // ============================================================
   // SAMPLED REGISTERS - Captured at start of each M-cycle
   // ============================================================
-  val PC_sampled = RegInit(0x0100.U(16.W))
+  val PC_sampled = RegInit(0x0000.U(16.W))  // Match PC initialization
   val SP_sampled = RegInit(0xFFFE.U(16.W))
   val A_sampled  = RegInit(0x01.U(8.W))
   val F_sampled  = RegInit(0xB0.U(8.W))
@@ -77,8 +79,8 @@ class LR35902_Core extends Module {
   // ============================================================
   // STATE MACHINE
   // ============================================================
-  val sFetchOpcode :: sFetchImm8 :: sFetchImm16Lo :: sFetchImm16Hi :: sExec :: sHalt :: Nil =
-    Enum(6)
+  val sFetchOpcode :: sFetchImm8 :: sFetchImm16Lo :: sFetchImm16Hi :: sExec :: sFetchCBOpcode :: sHalt :: Nil =
+    Enum(7)
 
   val state  = RegInit(sFetchOpcode)
   val tcycle = RegInit(0.U(2.W))
@@ -177,9 +179,11 @@ class LR35902_Core extends Module {
             (fetchedOpcode === "hD6".U) ||
             (fetchedOpcode === "hE0".U) ||
             (fetchedOpcode === "hE6".U) ||
+            (fetchedOpcode === "hE8".U) ||  // ADD SP,e
             (fetchedOpcode === "hEE".U) ||
             (fetchedOpcode === "hF0".U) ||
             (fetchedOpcode === "hF6".U) ||
+            (fetchedOpcode === "hF8".U) ||  // LD HL,SP+e
             (fetchedOpcode === "hFE".U)
 
         val needsImm16_new =
@@ -187,27 +191,35 @@ class LR35902_Core extends Module {
             (fetchedOpcode === "hC3".U) ||
             (fetchedOpcode === "hC4".U) || (fetchedOpcode === "hCC".U) || (fetchedOpcode === "hD4".U) || (fetchedOpcode === "hDC".U) ||
             (fetchedOpcode === "hCD".U) ||
+            (fetchedOpcode === "hEA".U) ||  // LD (nn),A
+            (fetchedOpcode === "hFA".U) ||   // LD A,(nn)
             (fetchedOpcode === "h01".U) ||
+            (fetchedOpcode === "h08".U) ||  // LD (nn),SP
             (fetchedOpcode === "h11".U) ||
             (fetchedOpcode === "h21".U) ||
             (fetchedOpcode === "h31".U)
 
-        when(needsImm8_new)       { state := sFetchImm8 }
-          .elsewhen(needsImm16_new) { state := sFetchImm16Lo }
-          .otherwise            {
-            state := sExec
-            // Sample registers for the upcoming execution (no immediates case)
-            PC_sampled := PC + 1.U
-            SP_sampled := SP
-            A_sampled  := A
-            F_sampled  := F
-            B_sampled  := B
-            C_sampled  := C
-            D_sampled  := D
-            E_sampled  := E
-            H_sampled  := H
-            L_sampled  := L
-          }
+        // Check for CB prefix
+        when(fetchedOpcode === "hCB".U) {
+          state := sFetchCBOpcode
+        }.elsewhen(needsImm8_new) {
+          state := sFetchImm8
+        }.elsewhen(needsImm16_new) {
+          state := sFetchImm16Lo
+        }.otherwise {
+          state := sExec
+          // Sample registers for the upcoming execution (no immediates case)
+          PC_sampled := PC + 1.U
+          SP_sampled := SP
+          A_sampled  := A
+          F_sampled  := F
+          B_sampled  := B
+          C_sampled  := C
+          D_sampled  := D
+          E_sampled  := E
+          H_sampled  := H
+          L_sampled  := L
+        }
       }
     }
 
@@ -280,56 +292,138 @@ class LR35902_Core extends Module {
     }
 
     // ------------------------------------------------------------
+    // FETCH CB OPCODE (second byte of CB instruction)
+    // ------------------------------------------------------------
+    is(sFetchCBOpcode) {
+      busAddr := PC
+      busRead := true.B
+
+      when(tcycle === 3.U) {
+        IR2    := io.memReadData
+        PC     := PC + 1.U
+        mcycle := 1.U  // CB instructions start at M-cycle 1
+        state  := sExec
+
+        // Sample registers for CB execution
+        PC_sampled := PC + 1.U
+        SP_sampled := SP
+        A_sampled  := A
+        F_sampled  := F
+        B_sampled  := B
+        C_sampled  := C
+        D_sampled  := D
+        E_sampled  := E
+        H_sampled  := H
+        L_sampled  := L
+      }
+    }
+
+    // ------------------------------------------------------------
     // EXECUTION
     // ------------------------------------------------------------
     is(sExec) {
-      busAddr      := mcBus.memAddr
-      busRead      := mcBus.memRead
-      busWrite     := mcBus.memWrite
-      busWriteData := mcBus.memWriteData
+      // Check if this is a CB instruction
+      when(IR === "hCB".U) {
+        // ============ CB INSTRUCTION ============
+        val cbOut = MicrocodeCB(
+          IR2    = IR2,
+          mcycle = mcycle,
+          tcycle = tcycle,
+          A_in = A_sampled, F_in = F_sampled,
+          B_in = B_sampled, C_in = C_sampled,
+          D_in = D_sampled, E_in = E_sampled,
+          H_in = H_sampled, L_in = L_sampled,
+          imm8_in = CB_imm8,  // Pass result carrier
+          io = mcBus
+        )
 
-      // Writeback at END of M-cycle (tcycle 3)
-      when(tcycle === 3.U) {
-        // DEBUG: Print what microcode is outputting
-        when(IR === "hCD".U || IR === "hC9".U) {
-          printf(p"[WRITEBACK T3] mcycle=$mcycle IR=0x${Hexadecimal(IR)} u.SP=0x${Hexadecimal(u.SP)} (was SP=0x${Hexadecimal(SP)})\n")
+        busAddr      := mcBus.memAddr
+        busRead      := mcBus.memRead
+        busWrite     := mcBus.memWrite
+        busWriteData := mcBus.memWriteData
+
+        // Writeback at END of M-cycle (tcycle 3)
+        when(tcycle === 3.U) {
+          // CB instructions don't modify PC or SP
+          A  := cbOut.A
+          F  := cbOut.F
+          B  := cbOut.B
+          C  := cbOut.C
+          D  := cbOut.D
+          E  := cbOut.E
+          H  := cbOut.H
+          L  := cbOut.L
+
+          CB_imm8 := cbOut.imm8  // Save result for next M-cycle
+
+          // Update sampled registers for next M-cycle
+          A_sampled  := cbOut.A
+          F_sampled  := cbOut.F
+          B_sampled  := cbOut.B
+          C_sampled  := cbOut.C
+          D_sampled  := cbOut.D
+          E_sampled  := cbOut.E
+          H_sampled  := cbOut.H
+          L_sampled  := cbOut.L
+
+          when(cbOut.done) {
+            mcycle := 0.U
+            state  := sFetchOpcode
+          }.otherwise {
+            mcycle := cbOut.next_mcycle
+          }
         }
 
-        // Write to REAL registers
-        PC := u.PC
-        SP := u.SP
-        A  := u.A
-        F  := u.F
-        B  := u.B
-        C  := u.C
-        D  := u.D
-        E  := u.E
-        H  := u.H
-        L  := u.L
+      }.otherwise {
+        // ============ NORMAL INSTRUCTION ============
+        busAddr      := mcBus.memAddr
+        busRead      := mcBus.memRead
+        busWrite     := mcBus.memWrite
+        busWriteData := mcBus.memWriteData
 
-        // CRITICAL FIX: Also write to sampled registers
-        // This ensures next M-cycle sees the updated values
-        PC_sampled := u.PC
-        SP_sampled := u.SP
-        A_sampled  := u.A
-        F_sampled  := u.F
-        B_sampled  := u.B
-        C_sampled  := u.C
-        D_sampled  := u.D
-        E_sampled  := u.E
-        H_sampled  := u.H
-        L_sampled  := u.L
+        // Writeback at END of M-cycle (tcycle 3)
+        when(tcycle === 3.U) {
+          // DEBUG: Print what microcode is outputting
+          when(IR === "hCD".U || IR === "hC9".U) {
+            printf(p"[WRITEBACK T3] mcycle=$mcycle IR=0x${Hexadecimal(IR)} u.SP=0x${Hexadecimal(u.SP)} (was SP=0x${Hexadecimal(SP)})\n")
+          }
 
-        imm8        := u.imm8
-        imm16       := u.imm16
-        IME         := u.IME
-        IME_pending := u.IME_pending
+          // Write to REAL registers
+          PC := u.PC
+          SP := u.SP
+          A  := u.A
+          F  := u.F
+          B  := u.B
+          C  := u.C
+          D  := u.D
+          E  := u.E
+          H  := u.H
+          L  := u.L
 
-        when(u.done) {
-          mcycle := 0.U
-          state  := sFetchOpcode
-        }.otherwise {
-          mcycle := u.next_mcycle
+          // CRITICAL FIX: Also write to sampled registers
+          // This ensures next M-cycle sees the updated values
+          PC_sampled := u.PC
+          SP_sampled := u.SP
+          A_sampled  := u.A
+          F_sampled  := u.F
+          B_sampled  := u.B
+          C_sampled  := u.C
+          D_sampled  := u.D
+          E_sampled  := u.E
+          H_sampled  := u.H
+          L_sampled  := u.L
+
+          imm8        := u.imm8
+          imm16       := u.imm16
+          IME         := u.IME
+          IME_pending := u.IME_pending
+
+          when(u.done) {
+            mcycle := 0.U
+            state  := sFetchOpcode
+          }.otherwise {
+            mcycle := u.next_mcycle
+          }
         }
       }
     }

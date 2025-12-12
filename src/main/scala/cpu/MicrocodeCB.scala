@@ -16,6 +16,8 @@ object MicrocodeCB {
     val H           = UInt(8.W)
     val L           = UInt(8.W)
 
+    val imm8        = UInt(8.W)  // Used to carry result from M2 to M3 for (HL) ops
+
     val done        = Bool()
     val next_mcycle = UInt(3.W)
   }
@@ -29,6 +31,7 @@ object MicrocodeCB {
              B_in: UInt, C_in: UInt,
              D_in: UInt, E_in: UInt,
              H_in: UInt, L_in: UInt,
+             imm8_in: UInt,  // Carries result from M2 to M3
              io: Bundle {
                val memAddr:      UInt
                val memRead:      Bool
@@ -49,6 +52,8 @@ object MicrocodeCB {
     out.E := E_in
     out.H := H_in
     out.L := L_in
+
+    out.imm8 := imm8_in  // Pass through by default
 
     out.done := false.B
     out.next_mcycle := mcycle
@@ -97,20 +102,6 @@ object MicrocodeCB {
       }
     }
 
-    //--------------------------------------------------------------
-    // Helper: set Z N H C exactly as DMG for CB opcodes
-    //--------------------------------------------------------------
-    def setFlags(Z: Bool, N: Bool, H: Bool, C: Bool): Unit = {
-      out.F := Cat(Z, N, H, C, 0.U(4.W))
-    }
-
-    //--------------------------------------------------------------
-    // M0 = IR2 ALREADY FETCHED IN TOP-LEVEL CORE.
-    // DMG timing:
-    //   CB r   → M1 exec → M2 done
-    //   CB (HL)→ M1 read(HL) → M2 exec → M3 write → done
-    //--------------------------------------------------------------
-
     //------------------------------------------------------------------
     // M1: Read (HL) if needed, otherwise compute operand immediately
     //------------------------------------------------------------------
@@ -120,15 +111,14 @@ object MicrocodeCB {
     when(mcycle === 1.U) {
 
       when(isHL) {
-        // access memory only at correct T-states
-        switch(tcycle) {
-          is(0.U) {
-            io.memAddr := HL
-            io.memRead := true.B
-          }
-          is(1.U) { io.memRead := true.B }
-          is(2.U) { operand := io.memReadData }
-          is(3.U) { out.next_mcycle := 2.U }
+        // access memory
+        io.memAddr := HL
+        io.memRead := true.B
+        operand := io.memReadData
+        out.imm8 := io.memReadData  // FIX: Save operand for M-cycle 2
+
+        when(tcycle === 3.U) {
+          out.next_mcycle := 2.U
         }
 
       }.otherwise {
@@ -141,14 +131,28 @@ object MicrocodeCB {
 
     //------------------------------------------------------------------
     // M2: execute CB operation (rot/shift/bit/res/set)
+    // FIX: All outputs must be unconditional for T-cycle 3 writeback!
     //------------------------------------------------------------------
     val result = Wire(UInt(8.W))
-    result := operand
-    val carryOut = Wire(Bool())
-    val halfCarry = Wire(Bool())
 
-    carryOut := false.B
-    halfCarry := false.B
+    // For (HL) ops in M2, use the saved operand from M1
+    when(mcycle === 2.U && isHL) {
+      operand := imm8_in
+    }
+
+    result := operand
+
+    // Flags - computed unconditionally
+    val flagZ = Wire(Bool())
+    val flagN = Wire(Bool())
+    val flagH = Wire(Bool())
+    val flagC = Wire(Bool())
+
+    // Defaults (preserve flags for RES/SET)
+    flagZ := F_in(7)
+    flagN := F_in(6)
+    flagH := F_in(5)
+    flagC := F_in(4)
 
     when(mcycle === 2.U) {
       switch(group) {
@@ -160,48 +164,72 @@ object MicrocodeCB {
             is("b000".U) {
               val c = operand(7)
               result := Cat(operand(6,0), c)
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // RRC
             is("b001".U) {
               val c = operand(0)
               result := Cat(c, operand(7,1))
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // RL
             is("b010".U) {
               val c = operand(7)
               result := Cat(operand(6,0), F_in(4))
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // RR
             is("b011".U) {
               val c = operand(0)
               result := Cat(F_in(4), operand(7,1))
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // SLA
             is("b100".U) {
               val c = operand(7)
               result := Cat(operand(6,0), 0.U)
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // SRA
             is("b101".U) {
               val c = operand(0)
               result := Cat(operand(7), operand(7,1))
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
             // SWAP
             is("b110".U) {
               result := Cat(operand(3,0), operand(7,4))
-              setFlags(result === 0.U, false.B, false.B, false.B)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := false.B
             }
             // SRL
             is("b111".U) {
               val c = operand(0)
               result := Cat(0.U, operand(7,1))
-              setFlags(result === 0.U, false.B, false.B, c)
+              flagZ := (result === 0.U)
+              flagN := false.B
+              flagH := false.B
+              flagC := c
             }
           }
         }
@@ -209,24 +237,39 @@ object MicrocodeCB {
         // BIT b, r
         is("b01".U) {
           val bitVal = operand(bitIdx)
-          // Z = ~bit
-          setFlags(!bitVal, false.B, true.B, F_in(4))
-          result := operand
+          flagZ := !bitVal
+          flagN := false.B
+          flagH := true.B
+          flagC := F_in(4)  // Preserve carry
+          result := operand  // BIT doesn't modify operand
         }
 
         // RES b, r
         is("b10".U) {
           val mask = (~(1.U << bitIdx)).asUInt
           result := operand & mask
+          // Flags already defaulted to preserve
         }
 
         // SET b, r
         is("b11".U) {
           val mask = (1.U << bitIdx).asUInt
           result := operand | mask
+          // Flags already defaulted to preserve
         }
 
       }
+
+      // FIX: Update flags unconditionally - stable for T-cycle 3 writeback
+      out.F := Cat(flagZ, flagN, flagH, flagC, 0.U(4.W))
+
+      // FIX: Write result to register unconditionally for non-(HL) ops
+      when(!isHL) {
+        wr(regIdx, result)
+      }
+
+      // FIX: Save result to imm8 for (HL) ops to use in M-cycle 3
+      out.imm8 := result
 
       // end of M2 execution
       when(tcycle === 3.U) {
@@ -240,28 +283,16 @@ object MicrocodeCB {
 
     //------------------------------------------------------------------
     // M3: write back to (HL) (only for CB (HL))
+    // FIX: Use imm8_in which contains the result from M2
     //------------------------------------------------------------------
     when(mcycle === 3.U) {
+      io.memAddr      := HL
+      io.memWrite     := true.B
+      io.memWriteData := imm8_in  // FIX: Use carried result from M2
 
-      switch(tcycle) {
-        is(0.U) {
-          io.memAddr      := HL
-          io.memWrite     := true.B
-          io.memWriteData := result
-        }
-        is(1.U) { io.memWrite := true.B }
-        is(2.U) { }
-        is(3.U) {
-          out.done := true.B
-        }
+      when(tcycle === 3.U) {
+        out.done := true.B
       }
-    }
-
-    //------------------------------------------------------------------
-    // Register writeback (for register CB opcodes)
-    //------------------------------------------------------------------
-    when(!isHL && mcycle === 2.U && tcycle === 0.U) {
-      wr(regIdx, result)
     }
 
     out

@@ -1,0 +1,284 @@
+// gameboy_sim.cpp - SDL frontend for your existing GameBoySoC
+// Compile: See build_and_run.sh
+
+#include <cstdint>
+#include <SDL2/SDL.h>
+#include <verilated.h>
+#include "VGameBoySoC.h"
+#include <iostream>
+#include <fstream>
+#include <vector>
+
+// Game Boy screen: 160x144 pixels
+#define GB_WIDTH 160
+#define GB_HEIGHT 144
+#define SCALE_FACTOR 4
+#define WINDOW_WIDTH (GB_WIDTH * SCALE_FACTOR)
+#define WINDOW_HEIGHT (GB_HEIGHT * SCALE_FACTOR)
+
+// Game Boy palette (DMG green tint)
+const uint32_t PALETTE_GREEN[4] = {
+    0xFF9BBC0F,  // Lightest green
+    0xFF8BAC0F,  // Light green
+    0xFF306230,  // Dark green
+    0xFF0F380F   // Darkest green
+};
+
+// Alternative: Grayscale
+const uint32_t PALETTE_GRAY[4] = {
+    0xFFFFFFFF,  // White
+    0xFFAAAAAA,  // Light gray
+    0xFF555555,  // Dark gray
+    0xFF000000   // Black
+};
+
+class GameBoySim {
+private:
+    VGameBoySoC* top;
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_Texture* texture;
+    uint32_t framebuffer[GB_WIDTH * GB_HEIGHT];
+
+    uint64_t main_time;
+    uint64_t cycle_count;
+    bool quit;
+    bool use_green_palette;
+
+public:
+    GameBoySim() : main_time(0), cycle_count(0), quit(false), use_green_palette(true) {
+        // Initialize Verilator
+        Verilated::commandArgs(0, NULL);
+        top = new VGameBoySoC;
+
+        // Initialize SDL
+        if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+            std::cerr << "SDL init failed: " << SDL_GetError() << std::endl;
+            exit(1);
+        }
+
+        window = SDL_CreateWindow(
+            "Game Boy FPGA - Chisel + Verilator",
+            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            WINDOW_WIDTH, WINDOW_HEIGHT,
+            SDL_WINDOW_SHOWN
+        );
+
+        if (!window) {
+            std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
+            exit(1);
+        }
+
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        if (!renderer) {
+            std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
+            exit(1);
+        }
+
+        texture = SDL_CreateTexture(
+            renderer,
+            SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,
+            GB_WIDTH, GB_HEIGHT
+        );
+
+        if (!texture) {
+            std::cerr << "Texture creation failed: " << SDL_GetError() << std::endl;
+            exit(1);
+        }
+
+        // Clear framebuffer to lightest color
+        for (int i = 0; i < GB_WIDTH * GB_HEIGHT; i++) {
+            framebuffer[i] = PALETTE_GREEN[0];
+        }
+
+        // Reset the design
+        top->reset = 1;
+        for (int i = 0; i < 20; i++) {
+            tick();
+        }
+        top->reset = 0;
+
+        std::cout << "╔═══════════════════════════════════════════╗" << std::endl;
+        std::cout << "║   Game Boy FPGA Emulator                 ║" << std::endl;
+        std::cout << "║   Chisel → Verilog → Verilator → SDL     ║" << std::endl;
+        std::cout << "╚═══════════════════════════════════════════╝" << std::endl;
+        std::cout << std::endl;
+    }
+
+    ~GameBoySim() {
+        SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        delete top;
+    }
+
+    void tick() {
+        // Clock rising edge
+        top->clock = 1;
+        top->eval();
+        main_time++;
+
+        // Clock falling edge
+        top->clock = 0;
+        top->eval();
+        main_time++;
+        cycle_count++;
+
+        // Capture pixel output
+        if (top->io_pixelValid) {
+            uint8_t x = top->io_pixelX;
+            uint8_t y = top->io_pixelY;
+            uint8_t color = top->io_pixelColor & 0x3;
+
+            if (x < GB_WIDTH && y < GB_HEIGHT) {
+                const uint32_t* palette = use_green_palette ? PALETTE_GREEN : PALETTE_GRAY;
+                framebuffer[y * GB_WIDTH + x] = palette[color];
+            }
+        }
+    }
+
+    void handleInput() {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                quit = true;
+            }
+            else if (event.type == SDL_KEYDOWN) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_ESCAPE:
+                        quit = true;
+                        break;
+                    case SDLK_p:
+                        // Toggle palette
+                        use_green_palette = !use_green_palette;
+                        std::cout << "Palette: " << (use_green_palette ? "DMG Green" : "Grayscale") << std::endl;
+                        break;
+                    case SDLK_r:
+                        // Reset
+                        std::cout << "Resetting..." << std::endl;
+                        top->reset = 1;
+                        for (int i = 0; i < 20; i++) tick();
+                        top->reset = 0;
+                        break;
+                    case SDLK_d:
+                        // Debug dump
+                        printDebugInfo();
+                        break;
+                }
+            }
+        }
+    }
+
+    void printDebugInfo() {
+        std::cout << "╔═════════════ DEBUG INFO ═════════════╗" << std::endl;
+        std::cout << "║ PC:    0x" << std::hex << std::setw(4) << std::setfill('0')
+                  << (int)top->io_dbg_pc << std::dec << "                          ║" << std::endl;
+        std::cout << "║ IR:    0x" << std::hex << std::setw(2) << std::setfill('0')
+                  << (int)top->io_dbg_IR << std::dec << "                            ║" << std::endl;
+        std::cout << "║ A:     0x" << std::hex << std::setw(2) << std::setfill('0')
+                  << (int)top->io_dbg_a << "    F: 0x" << std::setw(2) << (int)top->io_dbg_f << std::dec
+                  << "               ║" << std::endl;
+        std::cout << "║ B:     0x" << std::hex << std::setw(2) << std::setfill('0')
+                  << (int)top->io_dbg_b << "    C: 0x" << std::setw(2) << (int)top->io_dbg_c << std::dec
+                  << "               ║" << std::endl;
+        std::cout << "║ D:     0x" << std::hex << std::setw(2) << std::setfill('0')
+                  << (int)top->io_dbg_d << "    E: 0x" << std::setw(2) << (int)top->io_dbg_e << std::dec
+                  << "               ║" << std::endl;
+        std::cout << "║ H:     0x" << std::hex << std::setw(2) << std::setfill('0')
+                  << (int)top->io_dbg_h << "    L: 0x" << std::setw(2) << (int)top->io_dbg_l << std::dec
+                  << "               ║" << std::endl;
+        std::cout << "║ LY:    " << std::dec << (int)top->io_dbg_ly << "                              ║" << std::endl;
+        std::cout << "║ State: " << (int)top->io_dbg_state << " M:" << (int)top->io_dbg_mcycle
+                  << " T:" << (int)top->io_dbg_tcycle << "                    ║" << std::endl;
+        std::cout << "║ Cycles: " << cycle_count << "                       ║" << std::endl;
+        std::cout << "╚═════════════════════════════════════╝" << std::endl;
+    }
+
+    void render() {
+        // Update texture with framebuffer
+        SDL_UpdateTexture(texture, NULL, framebuffer, GB_WIDTH * sizeof(uint32_t));
+
+        // Render to screen
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
+    }
+
+    void run() {
+        const int CYCLES_PER_FRAME = 70224;  // 154 lines * 456 cycles = ~59.7 Hz
+        const int TARGET_FPS = 60;
+        const int FRAME_TIME_MS = 1000 / TARGET_FPS;
+
+        uint32_t last_frame_time = SDL_GetTicks();
+        int cycles_this_frame = 0;
+        uint8_t last_ly = 0;
+
+        std::cout << "Starting emulation..." << std::endl;
+        std::cout << "Controls:" << std::endl;
+        std::cout << "  ESC - Quit" << std::endl;
+        std::cout << "  P   - Toggle palette (DMG Green / Grayscale)" << std::endl;
+        std::cout << "  R   - Reset" << std::endl;
+        std::cout << "  D   - Debug dump" << std::endl;
+        std::cout << std::endl;
+
+        while (!quit) {
+            handleInput();
+
+            // Run cycles for this frame
+            bool frame_complete = false;
+            while (!frame_complete && cycles_this_frame < CYCLES_PER_FRAME * 2) {
+                tick();
+                cycles_this_frame++;
+
+                // Detect frame completion (LY wraps from 153 to 0)
+                uint8_t current_ly = top->io_dbg_ly;
+                if (current_ly == 0 && last_ly == 153) {
+                    frame_complete = true;
+                }
+                last_ly = current_ly;
+            }
+
+            if (frame_complete) {
+                render();
+                cycles_this_frame = 0;
+
+                // Frame timing
+                uint32_t current_time = SDL_GetTicks();
+                uint32_t frame_time = current_time - last_frame_time;
+
+                if (frame_time < FRAME_TIME_MS) {
+                    SDL_Delay(FRAME_TIME_MS - frame_time);
+                }
+
+                last_frame_time = SDL_GetTicks();
+
+                // Debug output every second
+                static int frame_count = 0;
+                static uint32_t last_debug_time = 0;
+                frame_count++;
+                if (current_time - last_debug_time >= 1000) {
+                    float actual_fps = 1000.0f * frame_count / (current_time - last_debug_time);
+                    std::cout << "FPS: " << std::fixed << std::setprecision(1) << actual_fps
+                              << " | PC: 0x" << std::hex << std::setw(4) << std::setfill('0')
+                              << (int)top->io_dbg_pc << std::dec
+                              << " | Cycles: " << cycle_count
+                              << std::endl;
+                    frame_count = 0;
+                    last_debug_time = current_time;
+                }
+            }
+        }
+
+        std::cout << std::endl;
+        std::cout << "Emulation stopped. Total cycles: " << cycle_count << std::endl;
+    }
+};
+
+int main(int argc, char* argv[]) {
+    std::cout << std::endl;
+    GameBoySim sim;
+    sim.run();
+    return 0;
+}

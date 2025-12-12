@@ -332,6 +332,24 @@ object Microcode {
 
       when(tcycle === 3.U) { out.done := true.B }
 
+      // LD (HL),n - Load immediate to memory at (HL) (0x36)
+      // Add this to Microcode.scala
+
+    }.elsewhen(IR === "h36".U) {
+      // M0: Already fetched imm8 in fetch stage
+      // M1: Write imm8 to (HL)
+      val HL = Cat(H_in, L_in)
+
+      when(mcycle === 0.U) {
+        io.memAddr := HL
+        io.memWrite := true.B
+        io.memWriteData := imm8_in
+
+        when(tcycle === 3.U) {
+          out.done := true.B
+        }
+      }
+
       // ----------------------------------------------------------
       // LD A,(HL+) / LDI A,(HL) — 0x2A
       // ----------------------------------------------------------
@@ -368,13 +386,15 @@ object Microcode {
       // LD (HL+),A / LDI (HL),A — 0x22
       // ----------------------------------------------------------
     }.elsewhen(IR === "h22".U) {
+      // LD (HL+),A - MUST compute HL outside tcycle check!
+      val newHL = HL + 1.U
+      out.H := newHL(15, 8)
+      out.L := newHL(7, 0)
+
       when(tcycle === 0.U) {
         io.memAddr      := HL
         io.memWrite     := true.B
         io.memWriteData := A_in
-        val newHL = HL + 1.U
-        out.H := newHL(15, 8)
-        out.L := newHL(7, 0)
       }
       when(tcycle === 3.U) { out.done := true.B }
 
@@ -382,13 +402,15 @@ object Microcode {
       // LD (HL-),A / LDD (HL),A — 0x32
       // ----------------------------------------------------------
     }.elsewhen(IR === "h32".U) {
+      // FIX: Compute HL decrement OUTSIDE tcycle block
+      val newHL = HL - 1.U
+      out.H := newHL(15, 8)
+      out.L := newHL(7, 0)
+
       when(tcycle === 0.U) {
         io.memAddr      := HL
         io.memWrite     := true.B
         io.memWriteData := A_in
-        val newHL = HL - 1.U
-        out.H := newHL(15, 8)
-        out.L := newHL(7, 0)
       }
       when(tcycle === 3.U) { out.done := true.B }
 
@@ -706,6 +728,7 @@ object Microcode {
 
       // ----------------------------------------------------------
       // CALL nn — 0xCD
+      // FIX: Make SP and PC updates unconditional
       // ----------------------------------------------------------
     }.elsewhen(IR === "hCD".U) {
       switch(mcycle) {
@@ -714,9 +737,7 @@ object Microcode {
           io.memAddr      := sp1
           io.memWrite     := true.B
           io.memWriteData := PC_in(15, 8)
-          when(tcycle === 2.U) {
-            out.SP := sp1
-          }
+          out.SP := sp1  // FIX: Unconditional
           when(tcycle === 3.U) { out.next_mcycle := 1.U }
         }
         is(1.U) {
@@ -724,26 +745,24 @@ object Microcode {
           io.memAddr      := sp2
           io.memWrite     := true.B
           io.memWriteData := PC_in(7, 0)
-          when(tcycle === 2.U) {
-            out.SP := sp2
-          }
+          out.SP := sp2  // FIX: Unconditional
           when(tcycle === 3.U) { out.next_mcycle := 2.U }
         }
         is(2.U) {
-          out.PC := imm16_in
+          out.PC := imm16_in  // FIX: Unconditional
           when(tcycle === 3.U) { out.done := true.B }
         }
       }
 
-      // ----------------------------------------------------------
+
       // RET — 0xC9
-      // ----------------------------------------------------------
+      // FIX: Make PC update and imm8 capture unconditional for stable writeback at T3
     }.elsewhen(IR === "hC9".U) {
       switch(mcycle) {
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) { out.imm8 := io.memReadData }
+          out.imm8 := io.memReadData  // FIX: Unconditional - stable for next M-cycle
           when(tcycle === 3.U) {
             out.SP := SP_in + 1.U
             out.next_mcycle := 1.U
@@ -752,9 +771,8 @@ object Microcode {
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) {
-            out.PC := Cat(io.memReadData, imm8_in)
-          }
+          // FIX: Make PC update unconditional - stays stable for T3 writeback
+          out.PC := Cat(io.memReadData, imm8_in)
           when(tcycle === 3.U) {
             out.SP := SP_in + 1.U
             out.done := true.B
@@ -762,15 +780,17 @@ object Microcode {
         }
       }
 
+
       // ----------------------------------------------------------
       // RETI — 0xD9
+      // FIX: Make PC, IME, and imm8 capture unconditional
       // ----------------------------------------------------------
     }.elsewhen(IR === "hD9".U) {
       switch(mcycle) {
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) { out.imm8 := io.memReadData }
+          out.imm8 := io.memReadData  // FIX: Unconditional
           when(tcycle === 3.U) {
             out.SP := SP_in + 1.U
             out.next_mcycle := 1.U
@@ -779,10 +799,9 @@ object Microcode {
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          when(tcycle === 2.U) {
-            out.PC := Cat(io.memReadData, imm8_in)
-            out.IME := true.B
-          }
+          // FIX: Make PC and IME updates unconditional
+          out.PC := Cat(io.memReadData, imm8_in)
+          out.IME := true.B
           when(tcycle === 3.U) {
             out.SP := SP_in + 1.U
             out.done := true.B
@@ -792,6 +811,7 @@ object Microcode {
 
       // ----------------------------------------------------------
       // RST n — Restart (0xC7, 0xCF, 0xD7, 0xDF, 0xE7, 0xEF, 0xF7, 0xFF)
+      // FIX: Make SP updates unconditional
       // ----------------------------------------------------------
     }.elsewhen((IR & "hC7".U) === "hC7".U) {
       val vec = (IR & "h38".U)
@@ -801,9 +821,7 @@ object Microcode {
           io.memAddr      := sp1
           io.memWrite     := true.B
           io.memWriteData := PC_in(15, 8)
-          when(tcycle === 2.U) {
-            out.SP := sp1
-          }
+          out.SP := sp1  // FIX: Unconditional
           when(tcycle === 3.U) { out.next_mcycle := 1.U }
         }
         is(1.U) {
@@ -811,10 +829,8 @@ object Microcode {
           io.memAddr      := sp2
           io.memWrite     := true.B
           io.memWriteData := PC_in(7, 0)
-          out.PC := vec
-          when(tcycle === 2.U) {
-            out.SP := sp2
-          }
+          out.PC := vec  // Already unconditional ✓
+          out.SP := sp2  // FIX: Unconditional
           when(tcycle === 3.U) { out.done := true.B }
         }
       }
@@ -877,6 +893,7 @@ object Microcode {
 
       // ----------------------------------------------------------
       // Conditional CALL (0xC4, 0xCC, 0xD4, 0xDC)
+      // FIX: Make SP updates unconditional
       // ----------------------------------------------------------
     }.elsewhen((IR & "hE7".U) === "hC4".U) {
       val cc = (IR >> 3) & 3.U
@@ -897,9 +914,7 @@ object Microcode {
             io.memAddr      := sp1
             io.memWrite     := true.B
             io.memWriteData := PC_in(15, 8)
-            when(tcycle === 2.U) {
-              out.SP := sp1
-            }
+            out.SP := sp1  // FIX: Unconditional
             when(tcycle === 3.U) { out.next_mcycle := 1.U }
           }
           is(1.U) {
@@ -907,10 +922,8 @@ object Microcode {
             io.memAddr      := sp2
             io.memWrite     := true.B
             io.memWriteData := PC_in(7, 0)
-            out.PC := imm16_in
-            when(tcycle === 2.U) {
-              out.SP := sp2
-            }
+            out.PC := imm16_in  // Already unconditional ✓
+            out.SP := sp2  // FIX: Unconditional
             when(tcycle === 3.U) { out.done := true.B }
           }
         }
@@ -920,6 +933,7 @@ object Microcode {
 
       // ----------------------------------------------------------
       // Conditional RET (0xC0, 0xC8, 0xD0, 0xD8)
+      // FIX: Make PC update and imm8 capture unconditional
       // ----------------------------------------------------------
     }.elsewhen((IR & "hE7".U) === "hC0".U) {
       val cc = (IR >> 3) & 3.U
@@ -938,7 +952,7 @@ object Microcode {
           is(0.U) {
             io.memAddr := SP_in
             io.memRead := true.B
-            when(tcycle === 2.U) { out.imm8 := io.memReadData }
+            out.imm8 := io.memReadData  // FIX: Unconditional
             when(tcycle === 3.U) {
               out.SP := SP_in + 1.U
               out.next_mcycle := 1.U
@@ -947,9 +961,8 @@ object Microcode {
           is(1.U) {
             io.memAddr := SP_in
             io.memRead := true.B
-            when(tcycle === 2.U) {
-              out.PC := Cat(io.memReadData, imm8_in)
-            }
+            // FIX: Make PC update unconditional
+            out.PC := Cat(io.memReadData, imm8_in)
             when(tcycle === 3.U) {
               out.SP := SP_in + 1.U
               out.done := true.B
@@ -965,6 +978,181 @@ object Microcode {
       // ----------------------------------------------------------
     }.elsewhen(IR === "hC3".U) {
       out.PC := imm16_in
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // SCF - Set Carry Flag (0x37)
+    }.elsewhen(IR === "h37".U) {
+      out.F := Cat(F_in(7), false.B, false.B, true.B, 0.U(4.W))  // Z unchanged, N=0, H=0, C=1
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // CCF - Complement Carry Flag (0x3F)
+    }.elsewhen(IR === "h3F".U) {
+      out.F := Cat(F_in(7), false.B, false.B, !F_in(4), 0.U(4.W))  // Z unchanged, N=0, H=0, C=!C
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // CPL - Complement A (0x2F)
+    }.elsewhen(IR === "h2F".U) {
+      out.A := ~A_in
+      out.F := Cat(F_in(7), true.B, true.B, F_in(4), 0.U(4.W))  // Z unchanged, N=1, H=1, C unchanged
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // DAA - Decimal Adjust Accumulator (0x27) - CORRECTED
+
+    }.elsewhen(IR === "h27".U) {
+      val N = F_in(6)  // Subtract flag
+      val H = F_in(5)  // Half-carry flag
+      val C = F_in(4)  // Carry flag
+
+      val adjusted = Wire(UInt(8.W))
+      val newCarry = Wire(Bool())
+      val correction = Wire(UInt(8.W))
+
+      correction := 0.U
+      adjusted := A_in
+      newCarry := C
+
+      when(!N) {
+        // After addition
+        val upperCorrect = Wire(UInt(8.W))
+        val lowerCorrect = Wire(UInt(8.W))
+
+        upperCorrect := 0.U
+        lowerCorrect := 0.U
+
+        // Check upper nibble
+        when(C || (A_in > 0x99.U)) {
+          upperCorrect := 0x60.U
+          newCarry := true.B
+        }
+
+        // Check lower nibble
+        when(H || ((A_in & 0x0F.U) > 0x09.U)) {
+          lowerCorrect := 0x06.U
+        }
+
+        correction := upperCorrect + lowerCorrect
+        adjusted := A_in + correction
+
+      }.otherwise {
+        // After subtraction
+        val upperCorrect = Wire(UInt(8.W))
+        val lowerCorrect = Wire(UInt(8.W))
+
+        upperCorrect := 0.U
+        lowerCorrect := 0.U
+
+        when(C) {
+          upperCorrect := 0x60.U
+        }
+        when(H) {
+          lowerCorrect := 0x06.U
+        }
+
+        correction := upperCorrect + lowerCorrect
+        adjusted := A_in - correction
+        newCarry := C  // Keep carry unchanged for subtraction
+      }
+
+      out.A := adjusted
+      setFlags(adjusted === 0.U, N, false.B, newCarry)
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // ---------------------------------------------------------------------
+      // LD A,(nn) - Load A from 16-bit address (0xFA)
+      // M0: Already fetched imm16 (low byte, high byte)
+      // M1: Read from address imm16
+      // ---------------------------------------------------------------------
+    }.elsewhen(IR === "hFA".U) {
+      when(mcycle === 0.U) {
+        io.memAddr := imm16_in
+        io.memRead := true.B
+
+        when(tcycle === 3.U) {
+          out.A := io.memReadData
+          out.done := true.B
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // LD (nn),A - Store A to 16-bit address (0xEA)
+      // M0: Already fetched imm16
+      // M1: Write A to address imm16
+      // ---------------------------------------------------------------------
+    }.elsewhen(IR === "hEA".U) {
+      when(mcycle === 0.U) {
+        io.memAddr := imm16_in
+        io.memWrite := (tcycle === 2.U)
+        io.memWriteData := A_in
+
+        when(tcycle === 3.U) {
+          out.done := true.B
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // LD (nn),SP - Store SP to 16-bit address (0x08)
+      // M0: Already fetched imm16
+      // M1: Write SP low byte to (nn)
+      // M2: Write SP high byte to (nn+1)
+      // ---------------------------------------------------------------------
+    }.elsewhen(IR === "h08".U) {
+      when(mcycle === 0.U) {
+        io.memAddr := imm16_in
+        io.memWrite := (tcycle === 2.U)
+        io.memWriteData := SP_in(7, 0)
+
+        when(tcycle === 3.U) {
+          out.next_mcycle := 1.U
+        }
+      }.elsewhen(mcycle === 1.U) {
+        io.memAddr := imm16_in + 1.U
+        io.memWrite := (tcycle === 2.U)
+        io.memWriteData := SP_in(15, 8)
+
+        when(tcycle === 3.U) {
+          out.done := true.B
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // LD SP,HL - Load HL into SP (0xF9)
+      // 1-cycle instruction
+      // ---------------------------------------------------------------------
+    }.elsewhen(IR === "hF9".U) {
+      out.SP := HL
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // LD HL,SP+e - Load SP+signed offset into HL (0xF8)
+    }.elsewhen(IR === "hF8".U) {
+      val offset_signed = Cat(Fill(8, imm8_in(7)), imm8_in).asSInt
+      val sp_signed = SP_in.asSInt
+      val result = sp_signed + offset_signed
+
+      // Half-carry and Carry are based on UNSIGNED 8-bit addition of lower bytes
+      val lower_sum = SP_in(7, 0) +& imm8_in  // Use +& for 9-bit result
+      val hc = ((SP_in(3, 0) +& imm8_in(3, 0))(4)) // Check bit 4 of 5-bit result
+      val cy = lower_sum(8) // Check bit 8 of 9-bit result
+
+      out.H := result.asUInt(15, 8)
+      out.L := result.asUInt(7, 0)
+      out.F := Cat(false.B, false.B, hc, cy, 0.U(4.W))  // Z=0, N=0, H, C
+
+      when(tcycle === 3.U) { out.done := true.B }
+
+      // ADD SP,e - Add signed immediate to SP (0xE8)
+    }.elsewhen(IR === "hE8".U) {
+      val offset_signed = Cat(Fill(8, imm8_in(7)), imm8_in).asSInt
+      val sp_signed = SP_in.asSInt
+      val result = sp_signed + offset_signed
+
+      // Half-carry and Carry are based on UNSIGNED 8-bit addition of lower bytes
+      val lower_sum = SP_in(7, 0) +& imm8_in  // Use +& for 9-bit result
+      val hc = ((SP_in(3, 0) +& imm8_in(3, 0))(4)) // Check bit 4 of 5-bit result
+      val cy = lower_sum(8) // Check bit 8 of 9-bit result
+
+      out.SP := result.asUInt
+      out.F := Cat(false.B, false.B, hc, cy, 0.U(4.W))  // Z=0, N=0, H, C
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------

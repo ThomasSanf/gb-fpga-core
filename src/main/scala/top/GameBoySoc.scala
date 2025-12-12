@@ -29,6 +29,11 @@ class GameBoySoC(romSize: Int, romPath: String) extends Module {
     val dbg_IR     = Output(UInt(8.W))
     val dbg_ly     = Output(UInt(8.W))
 
+    // *** NEW: External ROM loader pins ***
+    val extRomLoadAddr = Input(UInt(32.W))
+    val extRomLoadData = Input(UInt(8.W))
+    val extRomLoadEn   = Input(Bool())
+
     // PPU Pixel Output for SDL
     val pixelValid = Output(Bool())
     val pixelX     = Output(UInt(8.W))
@@ -93,6 +98,13 @@ class GameBoySoC(romSize: Int, romPath: String) extends Module {
   memory.io.ppuLY        := ppu.io.ly
   memory.io.ppuVblankIRQ := ppu.io.vblankIRQ
   memory.io.ppuLcdStatIRQ := ppu.io.lcdStatIRQ
+
+  // ================================
+  // *** NEW: External ROM loader wiring ***
+  // ================================
+  memory.io.extRomLoadAddr := io.extRomLoadAddr
+  memory.io.extRomLoadData := io.extRomLoadData
+  memory.io.extRomLoadEn   := io.extRomLoadEn
 
   // ================================
   // Expose Pixel Output

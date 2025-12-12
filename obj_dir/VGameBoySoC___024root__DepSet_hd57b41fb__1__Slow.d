@@ -1,0 +1,3 @@
+VGameBoySoC___024root__DepSet_hd57b41fb__1__Slow.o: \
+ VGameBoySoC___024root__DepSet_hd57b41fb__1__Slow.cpp VGameBoySoC__pch.h \
+ VGameBoySoC___024root.h

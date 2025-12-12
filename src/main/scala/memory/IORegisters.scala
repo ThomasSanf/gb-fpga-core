@@ -34,6 +34,7 @@ class IORegistersIO extends Bundle {
   val ppuStat = Output(UInt(8.W))  // FF41 - LCD Status
   val ppuScy  = Output(UInt(8.W))  // FF42 - Scroll Y
   val ppuScx  = Output(UInt(8.W))  // FF43 - Scroll X
+  val ppuLy   = Input(UInt(8.W))   // FF44 - LY (READ FROM PPU!) ← FIX!
   val ppuLyc  = Output(UInt(8.W))  // FF45 - LY Compare
   val ppuBgp  = Output(UInt(8.W))  // FF47 - BG Palette
   val ppuObp0 = Output(UInt(8.W))  // FF48 - OBJ Palette 0
@@ -128,7 +129,7 @@ class IORegisters extends Module {
   val regSTAT = RegInit(0x85.U(8.W))  // LCD Status
   val regSCY  = RegInit(0x00.U(8.W))  // Scroll Y
   val regSCX  = RegInit(0x00.U(8.W))  // Scroll X
-  val regLY   = RegInit(0x00.U(8.W))  // Current scanline
+  // REMOVED: val regLY = RegInit(0x00.U(8.W))  // LY now comes from PPU!
   val regLYC  = RegInit(0x00.U(8.W))  // LY Compare
   val regDMA  = RegInit(0xFF.U(8.W))  // DMA Transfer
   val regBGP  = RegInit(0xFC.U(8.W))  // BG Palette
@@ -140,7 +141,8 @@ class IORegisters extends Module {
   // ============================================================
   // BOOT ROM DISABLE (FF50)
   // ============================================================
-  val regBOOT = RegInit(0x01.U(8.W))  // Boot ROM already disabled
+  val regBOOT = RegInit(0xFF.U(8.W))   // Boot ROM enabled at reset
+
 
   // ============================================================
   // READ PATH
@@ -192,7 +194,7 @@ class IORegisters extends Module {
     is(0x41.U) { readData := regSTAT }
     is(0x42.U) { readData := regSCY }
     is(0x43.U) { readData := regSCX }
-    is(0x44.U) { readData := regLY }
+    is(0x44.U) { readData := io.ppuLy }  // ← FIX! Read from PPU!
     is(0x45.U) { readData := regLYC }
     is(0x46.U) { readData := regDMA }
     is(0x47.U) { readData := regBGP }
