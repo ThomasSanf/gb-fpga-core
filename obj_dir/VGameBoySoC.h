@@ -12,6 +12,7 @@
 
 class VGameBoySoC__Syms;
 class VGameBoySoC___024root;
+class VerilatedVcdC;
 
 // This class is the main interface to the Verilated model
 class alignas(VL_CACHE_LINE_BYTES) VGameBoySoC VL_NOT_FINAL : public VerilatedModel {
@@ -46,6 +47,9 @@ class alignas(VL_CACHE_LINE_BYTES) VGameBoySoC VL_NOT_FINAL : public VerilatedMo
     VL_OUT8(&io_pixelX,7,0);
     VL_OUT8(&io_pixelY,7,0);
     VL_OUT8(&io_pixelColor,1,0);
+    VL_OUT8(&io_hblank,0,0);
+    VL_OUT8(&io_vblank,0,0);
+    VL_OUT8(&io_lcdEnable,0,0);
     VL_OUT16(&io_dbg_pc,15,0);
     VL_IN(&io_extRomLoadAddr,31,0);
 
@@ -99,6 +103,7 @@ class alignas(VL_CACHE_LINE_BYTES) VGameBoySoC VL_NOT_FINAL : public VerilatedMo
     /// Re-init after cloning the model at the process level (e.g. fork in Linux)
     /// Re-allocate necessary resources. Called after cloning.
     void atClone() const;
+    std::unique_ptr<VerilatedTraceConfig> traceConfig() const override final;
 };
 
 #endif  // guard

@@ -9,8 +9,8 @@ object GameBoySoCMain extends App {
   println("╚═════════════════════════════════════════════╝")
   println()
 
-  val romSize = 1048576  // 1MB for Pokemon Red
-  val romPath = "roms/pkm.hex"
+  val romSize = 65536   // 64kb
+  val romPath = "roms/02-interrupts.gb"
 
   println(s"ROM Size: ${romSize} bytes (${romSize / 1024}KB)")
   println(s"ROM Path: $romPath")

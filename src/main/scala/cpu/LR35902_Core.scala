@@ -36,10 +36,10 @@ class LR35902_Core extends Module {
     val dbg_tcycle = Output(UInt(8.W))
     val dbg_mcycle = Output(UInt(8.W))
     val dbg_IR     = Output(UInt(8.W))
-  })
 
+  })
   // ============================================================
-  // CPU REGISTERS
+  // CPU REGISTERS  (post-boot default state)
   // ============================================================
   val A = RegInit(0x01.U(8.W))
   val F = RegInit(0xB0.U(8.W))
@@ -50,22 +50,22 @@ class LR35902_Core extends Module {
   val H = RegInit(0x01.U(8.W))
   val L = RegInit(0x4D.U(8.W))
 
-  val PC = RegInit(0x0000.U(16.W))
+  val PC = RegInit(0x0100.U(16.W))
   val SP = RegInit(0xFFFE.U(16.W))
 
-  val IR    = RegInit(0.U(8.W))
-  val IR2   = RegInit(0.U(8.W))  // CB prefix second byte
-  val imm8  = RegInit(0.U(8.W))
-  val imm16 = RegInit(0.U(16.W))
-  val CB_imm8 = RegInit(0.U(8.W))  // CB result carrier
+  val IR       = RegInit(0.U(8.W))
+  val IR2      = RegInit(0.U(8.W))
+  val imm8     = RegInit(0.U(8.W))
+  val imm16    = RegInit(0.U(16.W))
+  val CB_imm8  = RegInit(0.U(8.W))
 
   val IME         = RegInit(false.B)
   val IME_pending = RegInit(false.B)
 
   // ============================================================
-  // SAMPLED REGISTERS - Captured at start of each M-cycle
+  // SAMPLED REGISTERS
   // ============================================================
-  val PC_sampled = RegInit(0x0000.U(16.W))  // Match PC initialization
+  val PC_sampled = RegInit(0x0100.U(16.W))
   val SP_sampled = RegInit(0xFFFE.U(16.W))
   val A_sampled  = RegInit(0x01.U(8.W))
   val F_sampled  = RegInit(0xB0.U(8.W))
@@ -76,17 +76,40 @@ class LR35902_Core extends Module {
   val H_sampled  = RegInit(0x01.U(8.W))
   val L_sampled  = RegInit(0x4D.U(8.W))
 
+
   // ============================================================
   // STATE MACHINE
   // ============================================================
-  val sFetchOpcode :: sFetchImm8 :: sFetchImm16Lo :: sFetchImm16Hi :: sExec :: sFetchCBOpcode :: sHalt :: Nil =
-    Enum(7)
+  val states = Enum(8)
+
+  val sFetchOpcode      = states(0)
+  val sFetchImm8        = states(1)
+  val sFetchImm16Lo     = states(2)
+  val sFetchImm16Hi     = states(3)
+  val sExec             = states(4)
+  val sFetchCBOpcode    = states(5)
+  val sHalt             = states(6)
+  val sInterrupt        = states(7)
+
 
   val state  = RegInit(sFetchOpcode)
   val tcycle = RegInit(0.U(2.W))
   val mcycle = RegInit(0.U(3.W))
   val halted = RegInit(false.B)
 
+  val debugCounter = RegInit(0.U(16.W))
+  // ============================================================
+  // DEBUG LOOKAHEAD (instruction bytes)
+  // ============================================================
+  val dbg_op0 = Reg(UInt(8.W))
+  val dbg_op1 = Reg(UInt(8.W))
+  val dbg_op2 = Reg(UInt(8.W))
+  val dbg_op3 = Reg(UInt(8.W))
+
+  val dbg_pc_fetch = Reg(UInt(16.W)) // PC at opcode fetch
+  val nextByte1 = io.memReadData  // This will need to come from memory
+  val nextByte2 = 0.U(8.W)  // Would need memory lookahead
+  val nextByte3 = 0.U(8.W)  // Would need memory lookahead
   // ============================================================
   // INTERRUPTS
   // ============================================================
@@ -96,6 +119,14 @@ class LR35902_Core extends Module {
   intr.io.IME    := IME
   intr.io.pc     := PC
   intr.io.halted := halted
+  // Interrupts may only be taken between instructions
+  val canTakeInterrupt =
+    state === sFetchOpcode &&
+      tcycle === 0.U &&
+      !halted
+  val shouldIrq  = intr.io.should_irq
+  val irqVector = intr.io.irq_vector
+
 
   // ============================================================
   // MICROCODE BUS
@@ -150,78 +181,145 @@ class LR35902_Core extends Module {
   // FSM
   // ============================================================
   switch(state) {
+    // ------------------------------------------------------------
+    // INTERRUPT ENTRY
+    // ------------------------------------------------------------
+    is(sInterrupt) {
+      switch(mcycle) {
 
+        // M0: clear IF bit (write to 0xFF0F)
+        is(0.U) {
+          busAddr      := "hFF0F".U
+          busWrite     := true.B
+          busWriteData := io.ifReg & ~(1.U << intr.io.irq_index)
+
+          when(tcycle === 3.U) {
+            mcycle := 1.U
+          }
+        }
+
+        // M1: push PC high
+        is(1.U) {
+          busAddr      := SP - 1.U
+          busWrite     := true.B
+          busWriteData := PC(15,8)
+
+          when(tcycle === 3.U) {
+            SP := SP - 1.U
+            mcycle := 2.U
+          }
+        }
+
+        // M2: push PC low + jump
+        is(2.U) {
+          busAddr      := SP - 1.U
+          busWrite     := true.B
+          busWriteData := PC(7,0)
+
+          when(tcycle === 3.U) {
+            SP := SP - 1.U
+            PC := intr.io.irq_vector
+            mcycle := 0.U
+            state  := sFetchOpcode
+          }
+        }
+      }
+    }
     // ------------------------------------------------------------
     // OPCODE FETCH (M1)
     // ------------------------------------------------------------
     is(sFetchOpcode) {
-      busAddr := PC
-      busRead := true.B
 
-      when(tcycle === 3.U) {
-        val fetchedOpcode = io.memReadData
-        IR := fetchedOpcode
-        PC := PC + 1.U
+      // Interrupt entry stays here
+      when (canTakeInterrupt && shouldIrq) {
+        halted := false.B
+        IME := false.B
         mcycle := 0.U
+        state  := sInterrupt
+      }.otherwise {
 
-        when(IME_pending) {
-          IME := true.B
-          IME_pending := false.B
-        }
+        busAddr := PC
+        busRead := true.B
 
-        val isLDrImm_new = ((fetchedOpcode & "hC7".U) === "h06".U)
+        when (tcycle === 3.U) {
+          val fetchedOpcode = io.memReadData
+          val nextPC = PC + 1.U
 
-        val needsImm8_new =
-          isLDrImm_new ||
-            (fetchedOpcode === "h18".U) ||
-            (fetchedOpcode === "h20".U) || (fetchedOpcode === "h28".U) || (fetchedOpcode === "h30".U) || (fetchedOpcode === "h38".U) ||
-            (fetchedOpcode === "hC6".U) ||
-            (fetchedOpcode === "hD6".U) ||
-            (fetchedOpcode === "hE0".U) ||
-            (fetchedOpcode === "hE6".U) ||
-            (fetchedOpcode === "hE8".U) ||  // ADD SP,e
-            (fetchedOpcode === "hEE".U) ||
-            (fetchedOpcode === "hF0".U) ||
-            (fetchedOpcode === "hF6".U) ||
-            (fetchedOpcode === "hF8".U) ||  // LD HL,SP+e
-            (fetchedOpcode === "hFE".U)
+          // === DEBUG CAPTURE ===
+          dbg_pc_fetch := PC
+          dbg_op0 := fetchedOpcode
 
-        val needsImm16_new =
-          (fetchedOpcode === "hC2".U) || (fetchedOpcode === "hCA".U) || (fetchedOpcode === "hD2".U) || (fetchedOpcode === "hDA".U) ||
-            (fetchedOpcode === "hC3".U) ||
-            (fetchedOpcode === "hC4".U) || (fetchedOpcode === "hCC".U) || (fetchedOpcode === "hD4".U) || (fetchedOpcode === "hDC".U) ||
-            (fetchedOpcode === "hCD".U) ||
-            (fetchedOpcode === "hEA".U) ||  // LD (nn),A
-            (fetchedOpcode === "hFA".U) ||   // LD A,(nn)
-            (fetchedOpcode === "h01".U) ||
-            (fetchedOpcode === "h08".U) ||  // LD (nn),SP
-            (fetchedOpcode === "h11".U) ||
-            (fetchedOpcode === "h21".U) ||
-            (fetchedOpcode === "h31".U)
+          IR := fetchedOpcode
+          PC := nextPC
+          mcycle := 0.U
 
-        // Check for CB prefix
-        when(fetchedOpcode === "hCB".U) {
-          state := sFetchCBOpcode
-        }.elsewhen(needsImm8_new) {
-          state := sFetchImm8
-        }.elsewhen(needsImm16_new) {
-          state := sFetchImm16Lo
-        }.otherwise {
-          state := sExec
-          // Sample registers for the upcoming execution (no immediates case)
-          PC_sampled := PC + 1.U
-          SP_sampled := SP
-          A_sampled  := A
-          F_sampled  := F
-          B_sampled  := B
-          C_sampled  := C
-          D_sampled  := D
-          E_sampled  := E
-          H_sampled  := H
-          L_sampled  := L
+
+          // In the printf section:
+          when(debugCounter < 80000.U) {
+            printf(p"A: ${Hexadecimal(A)} F: ${Hexadecimal(F)} B: ${Hexadecimal(B)} C: ${Hexadecimal(C)} " +
+              p"D: ${Hexadecimal(D)} E: ${Hexadecimal(E)} H: ${Hexadecimal(H)} L: ${Hexadecimal(L)} " +
+              p"SP: ${Hexadecimal(SP)} PC: ${Hexadecimal(PC)} | ${Hexadecimal(fetchedOpcode)}\n")
+            debugCounter := debugCounter + 1.U
+          }
+
+
+          val isLDrImm = ((fetchedOpcode & "hC7".U) === "h06".U)
+
+          val needsImm8 =
+            isLDrImm ||
+              fetchedOpcode === "h18".U ||
+              fetchedOpcode === "h20".U || fetchedOpcode === "h28".U ||
+              fetchedOpcode === "h30".U || fetchedOpcode === "h38".U ||
+              fetchedOpcode === "hC6".U || // ADD A,n
+              fetchedOpcode === "hCE".U || // ✅ ADC A,n  (THIS WAS MISSING)
+              fetchedOpcode === "hD6".U || // SUB A,n
+              fetchedOpcode === "hDE".U || // ✅ SBC A,n  (add this too)
+              fetchedOpcode === "hE0".U || fetchedOpcode === "hE6".U ||
+              fetchedOpcode === "hE8".U || fetchedOpcode === "hEE".U ||
+              fetchedOpcode === "hF0".U || fetchedOpcode === "hF6".U ||
+              fetchedOpcode === "hF8".U || fetchedOpcode === "hFE".U
+
+
+
+          val needsImm16 =
+            fetchedOpcode === "hC2".U || fetchedOpcode === "hCA".U ||
+              fetchedOpcode === "hD2".U || fetchedOpcode === "hDA".U ||
+              fetchedOpcode === "hC3".U ||
+              fetchedOpcode === "hC4".U || fetchedOpcode === "hCC".U ||
+              fetchedOpcode === "hD4".U || fetchedOpcode === "hDC".U ||
+              fetchedOpcode === "hCD".U ||
+              fetchedOpcode === "hEA".U || fetchedOpcode === "hFA".U ||
+              fetchedOpcode === "h01".U || fetchedOpcode === "h08".U ||
+              fetchedOpcode === "h11".U || fetchedOpcode === "h21".U ||
+              fetchedOpcode === "h31".U
+
+          when (fetchedOpcode === "hCB".U) {
+            state := sFetchCBOpcode
+          }.elsewhen (needsImm8) {
+            state := sFetchImm8
+          }.elsewhen (needsImm16) {
+            state := sFetchImm16Lo
+          }.otherwise {
+            state := sExec
+
+            // ✅ SAMPLE ONCE, CORRECT PC
+            PC_sampled := nextPC
+            SP_sampled := SP
+            A_sampled  := A
+            F_sampled  := F
+            B_sampled  := B
+            C_sampled  := C
+            D_sampled  := D
+            E_sampled  := E
+            H_sampled  := H
+            L_sampled  := L
+          }
         }
       }
     }
+
+
+
 
     // ------------------------------------------------------------
     // FETCH IMM8
@@ -232,12 +330,13 @@ class LR35902_Core extends Module {
 
       when(tcycle === 3.U) {
         imm8   := io.memReadData
-        PC     := PC + 1.U
+        val newPC = PC + 1.U  // Calculate new PC value
+        PC     := newPC
         mcycle := 0.U
         state  := sExec
 
-        // Sample registers for the upcoming execution
-        PC_sampled := PC + 1.U  // PC already incremented above
+        // Sample registers using CALCULATED values
+        PC_sampled := newPC  // Use newPC, not PC + 1.U!
         SP_sampled := SP
         A_sampled  := A
         F_sampled  := F
@@ -273,12 +372,13 @@ class LR35902_Core extends Module {
 
       when(tcycle === 3.U) {
         imm16  := Cat(io.memReadData, imm16(7,0))
-        PC     := PC + 1.U
+        val newPC = PC + 1.U  // Calculate new PC value
+        PC     := newPC
         mcycle := 0.U
         state  := sExec
 
-        // Sample registers for the upcoming execution
-        PC_sampled := PC + 1.U  // PC already incremented above
+        // Sample registers using CALCULATED values
+        PC_sampled := newPC  // Use newPC, not PC + 1.U!
         SP_sampled := SP
         A_sampled  := A
         F_sampled  := F
@@ -300,12 +400,13 @@ class LR35902_Core extends Module {
 
       when(tcycle === 3.U) {
         IR2    := io.memReadData
-        PC     := PC + 1.U
+        val newPC = PC + 1.U  // Calculate new PC value
+        PC     := newPC
         mcycle := 1.U  // CB instructions start at M-cycle 1
         state  := sExec
 
-        // Sample registers for CB execution
-        PC_sampled := PC + 1.U
+        // Sample registers using CALCULATED values
+        PC_sampled := newPC  // Use newPC, not PC + 1.U!
         SP_sampled := SP
         A_sampled  := A
         F_sampled  := F
@@ -385,7 +486,7 @@ class LR35902_Core extends Module {
         when(tcycle === 3.U) {
           // DEBUG: Print what microcode is outputting
           when(IR === "hCD".U || IR === "hC9".U) {
-            printf(p"[WRITEBACK T3] mcycle=$mcycle IR=0x${Hexadecimal(IR)} u.SP=0x${Hexadecimal(u.SP)} (was SP=0x${Hexadecimal(SP)})\n")
+            //  printf(p"[WRITEBACK T3] mcycle=$mcycle IR=0x${Hexadecimal(IR)} u.SP=0x${Hexadecimal(u.SP)} (was SP=0x${Hexadecimal(SP)})\n")
           }
 
           // Write to REAL registers
@@ -413,10 +514,15 @@ class LR35902_Core extends Module {
           H_sampled  := u.H
           L_sampled  := u.L
 
-          imm8        := u.imm8
-          imm16       := u.imm16
+        //  imm8        := u.imm8
+        //  imm16       := u.imm16
           IME         := u.IME
           IME_pending := u.IME_pending
+          // EI delay handling (SM83 correct)
+          when (u.done && IME_pending) {
+            IME := true.B
+            IME_pending := false.B
+          }
 
           when(u.done) {
             mcycle := 0.U
@@ -432,8 +538,18 @@ class LR35902_Core extends Module {
     // HALT
     // ------------------------------------------------------------
     is(sHalt) {
-      halted := true.B
+      when (intr.io.IF.orR) {
+        halted := false.B
+        state  := sFetchOpcode
+        mcycle := 0.U
+        tcycle := 0.U
+      }.otherwise {
+        halted := true.B
+      }
     }
+
+
+
   }
 
   // ============================================================

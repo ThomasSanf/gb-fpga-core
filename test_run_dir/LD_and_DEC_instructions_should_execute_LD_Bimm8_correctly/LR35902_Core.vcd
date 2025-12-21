@@ -1,0 +1,960 @@
+$date
+2025-12-16T02:49+0000
+$end
+$version
+0.2
+$end
+$comment
+
+$end
+$timescale 1ns  $end
+$scope module LR35902_Core $end
+ $var wire 8 ! E_sampled $end
+ $var wire 8 # A $end
+ $var wire 8 $ B $end
+ $var wire 8 % C $end
+ $var wire 8 & D $end
+ $var wire 8 ' E $end
+ $var wire 8 ( F $end
+ $var wire 8 ) H $end
+ $var wire 8 * L $end
+ $var wire 5 + u_cc $end
+ $var wire 1 , u_alu $end
+ $var wire 8 - u_correction $end
+ $var wire 1 . u__done $end
+ $var wire 16 / busAddr $end
+ $var wire 1 0 u_cy $end
+ $var wire 8 1 io_memWriteData $end
+ $var wire 16 2 SP_sampled $end
+ $var wire 16 3 u_sp_signed_1 $end
+ $var wire 1 4 u_cy_1 $end
+ $var wire 1 5 u_hc $end
+ $var wire 16 6 u_hl $end
+ $var wire 8 8 imm8 $end
+ $var wire 3 9 state $end
+ $var wire 16 : u_newHL_1 $end
+ $var wire 16 ; u_sp2_1 $end
+ $var wire 16 = u_newHL_2 $end
+ $var wire 16 > u_newHL_3 $end
+ $var wire 16 ? u_sp2_3 $end
+ $var wire 16 @ u_sp2_2 $end
+ $var wire 1 A cbOut_c_4 $end
+ $var wire 1 B cbOut_c_5 $end
+ $var wire 1 C cbOut_c_6 $end
+ $var wire 1 D cbOut_c_1 $end
+ $var wire 1 E cbOut_c_2 $end
+ $var wire 1 F cbOut_c_3 $end
+ $var wire 1 G busRead $end
+ $var wire 4 H u_rr $end
+ $var wire 1 I u_printf $end
+ $var wire 1 J needsImm16_new $end
+ $var wire 1 K u_C $end
+ $var wire 1 L u_H $end
+ $var wire 1 M u_N $end
+ $var wire 1 N u_flagC_1 $end
+ $var wire 2 O u_out_F_hi_hi $end
+ $var wire 8 P u_oldVal_1 $end
+ $var wire 1 Q busWrite $end
+ $var wire 1 R u_halfCarry $end
+ $var wire 1 S isLDrImm_new $end
+ $var wire 8 T u_upperCorrect_1 $end
+ $var wire 1 U u_flagC_2 $end
+ $var wire 1 V u_flagC_3 $end
+ $var wire 3 W u_out_F_hi_18 $end
+ $var wire 3 X u_out_F_hi_17 $end
+ $var wire 3 Y u_out_F_hi_19 $end
+ $var wire 3 Z u_out_F_hi_14 $end
+ $var wire 3 [ u_out_F_hi_13 $end
+ $var wire 3 \ u_out_F_hi_16 $end
+ $var wire 3 ] u_out_F_hi_15 $end
+ $var wire 3 ^ u_out_F_hi_10 $end
+ $var wire 3 _ u_out_F_hi_12 $end
+ $var wire 3 ` u_out_F_hi_11 $end
+ $var wire 3 a u_out_F_hi_24 $end
+ $var wire 3 b u_out_F_hi_21 $end
+ $var wire 3 c u_out_F_hi_20 $end
+ $var wire 3 d u_out_F_hi_23 $end
+ $var wire 3 e u_out_F_hi_22 $end
+ $var wire 8 f u_oldVal $end
+ $var wire 16 g u_result $end
+ $var wire 8 h io_dbg_mcycle $end
+ $var wire 8 i u_off_1 $end
+ $var wire 8 j cbOut_result $end
+ $var wire 16 o u_sp1_2 $end
+ $var wire 16 p u_sp1_1 $end
+ $var wire 16 q u_sp1_3 $end
+ $var wire 2 r u_out_F_hi_hi_20 $end
+ $var wire 2 s u_out_F_hi_hi_21 $end
+ $var wire 2 t u_out_F_hi_hi_24 $end
+ $var wire 2 u u_out_F_hi_hi_22 $end
+ $var wire 2 v u_out_F_hi_hi_23 $end
+ $var wire 2 w u_out_F_hi_hi_17 $end
+ $var wire 2 x u_out_F_hi_hi_18 $end
+ $var wire 2 y u_out_F_hi_hi_15 $end
+ $var wire 2 z u_out_F_hi_hi_16 $end
+ $var wire 2 { u_out_F_hi_hi_19 $end
+ $var wire 2 | u_out_F_hi_hi_10 $end
+ $var wire 2 } u_out_F_hi_hi_13 $end
+ $var wire 2 ~ u_out_F_hi_hi_14 $end
+ $var wire 2 "! u_out_F_hi_hi_11 $end
+ $var wire 2 "" u_out_F_hi_hi_12 $end
+ $var wire 1 "# cbOut_c $end
+ $var wire 1 "$ intr $end
+ $var wire 8 "% cbOut_D $end
+ $var wire 8 "& cbOut_E $end
+ $var wire 8 "' cbOut_F $end
+ $var wire 8 "( cbOut_A $end
+ $var wire 8 ") cbOut_B $end
+ $var wire 8 "* cbOut_C $end
+ $var wire 8 "+ cbOut_L $end
+ $var wire 8 ", cbOut_H $end
+ $var wire 1 "- printf_1 $end
+ $var wire 1 ". printf $end
+ $var wire 8 "/ io_dbg_state $end
+ $var wire 16 "0 mcBus_memAddr $end
+ $var wire 8 "1 u__imm8 $end
+ $var wire 16 "2 u_offset_signed $end
+ $var wire 8 "3 u_lowerCorrect $end
+ $var wire 8 "6 F_sampled $end
+ $var wire 8 "9 io_memReadData $end
+ $var wire 1 ": mcBus_memRead $end
+ $var wire 8 "; IR $end
+ $var wire 1 "< u__IME_pending $end
+ $var wire 1 "= u__IME $end
+ $var wire 9 "> u_lower_sum $end
+ $var wire 16 "? PC $end
+ $var wire 16 "A imm16 $end
+ $var wire 16 "B SP $end
+ $var wire 3 "D mcycle $end
+ $var wire 2 "E tcycle $end
+ $var wire 3 "F u__next_mcycle $end
+ $var wire 5 "I u_out_F_lo_19 $end
+ $var wire 16 "J u_sp2 $end
+ $var wire 5 "K u_out_F_lo_10 $end
+ $var wire 16 "L u_sp1 $end
+ $var wire 5 "M u_out_F_lo_11 $end
+ $var wire 5 "N u_out_F_lo_12 $end
+ $var wire 5 "O u_out_F_lo_13 $end
+ $var wire 5 "P u_out_F_lo_14 $end
+ $var wire 5 "Q u_out_F_lo_15 $end
+ $var wire 5 "R u_out_F_lo_16 $end
+ $var wire 5 "S u_out_F_lo_17 $end
+ $var wire 5 "T u_out_F_lo_18 $end
+ $var wire 8 "U u_adjusted $end
+ $var wire 1 "V u_newCarry $end
+ $var wire 5 "W u_out_F_lo_20 $end
+ $var wire 5 "X u_out_F_lo_21 $end
+ $var wire 5 "Y u_out_F_lo_22 $end
+ $var wire 5 "Z u_out_F_lo_23 $end
+ $var wire 5 "[ u_out_F_lo_24 $end
+ $var wire 8 "\ cbOut_imm8 $end
+ $var wire 16 "] PC_sampled $end
+ $var wire 1 "^ cbOut_bitVal $end
+ $var wire 8 "_ cbOut_mask_1 $end
+ $var wire 8 "` u_src $end
+ $var wire 8 "a u_src_9 $end
+ $var wire 8 "b u_src_8 $end
+ $var wire 8 "c u_src_7 $end
+ $var wire 8 "d u_src_6 $end
+ $var wire 8 "e u_src_5 $end
+ $var wire 8 "f u_src_4 $end
+ $var wire 8 "g u_src_3 $end
+ $var wire 8 "h u_src_2 $end
+ $var wire 8 "i u_src_1 $end
+ $var wire 1 "j io_memRead $end
+ $var wire 4 "k u_rr_4 $end
+ $var wire 4 "l u_rr_3 $end
+ $var wire 4 "m u_rr_2 $end
+ $var wire 4 "n u_rr_1 $end
+ $var wire 16 "o u_operand $end
+ $var wire 4 "t u_rr_5 $end
+ $var wire 8 "u io_ifReg $end
+ $var wire 1 "v cbOut_done $end
+ $var wire 8 "w mcBus_memWriteData $end
+ $var wire 1 "x cbOut_flagN $end
+ $var wire 1 "y cbOut_flagZ $end
+ $var wire 1 "z cbOut_flagC $end
+ $var wire 1 "{ cbOut_flagH $end
+ $var wire 16 "} u_HL_1 $end
+ $var wire 3 "~ u_out_F_hi_1 $end
+ $var wire 3 #! u_out_F_hi_6 $end
+ $var wire 3 #" u_out_F_hi_7 $end
+ $var wire 3 ## u_out_F_hi_8 $end
+ $var wire 3 #$ u_out_F_hi_9 $end
+ $var wire 3 #% u_out_F_hi_2 $end
+ $var wire 3 #& u_out_F_hi_3 $end
+ $var wire 3 #' u_out_F_hi_4 $end
+ $var wire 3 #( u_out_F_hi_5 $end
+ $var wire 1 #) needsImm8_new $end
+ $var wire 16 #* cbOut_HL $end
+ $var wire 1 #+ u_condition_1 $end
+ $var wire 1 #, u_condition_2 $end
+ $var wire 1 #- u_condition_3 $end
+ $var wire 16 #. io_memAddr $end
+ $var wire 8 #/ B_sampled $end
+ $var wire 8 #0 H_sampled $end
+ $var wire 8 #1 u_vec $end
+ $var wire 1 #2 u_hc_1 $end
+ $var wire 16 #3 u__imm16 $end
+ $var wire 8 #4 u_lowerCorrect_1 $end
+ $var wire 1 #5 u_flagZ $end
+ $var wire 8 #6 cbOut_mask $end
+ $var wire 1 #7 u_flagC $end
+ $var wire 1 #8 IME_pending $end
+ $var wire 16 #9 u_result_2 $end
+ $var wire 16 #: u_result_3 $end
+ $var wire 16 #; u_result_1 $end
+ $var wire 16 #< u_result_4 $end
+ $var wire 1 #= u_carry $end
+ $var wire 9 #> u_lower_sum_1 $end
+ $var wire 5 #? u_dst $end
+ $var wire 5 #@ u_cc_1 $end
+ $var wire 5 #A u_cc_2 $end
+ $var wire 5 #B u_cc_3 $end
+ $var wire 3 #C cbOut_next_mcycle $end
+ $var wire 8 #D A_sampled $end
+ $var wire 1 #E io_memWrite $end
+ $var wire 8 #F io_dbg_h $end
+ $var wire 8 #G io_dbg_l $end
+ $var wire 8 #H io_dbg_a $end
+ $var wire 8 #I io_dbg_b $end
+ $var wire 8 #J io_dbg_e $end
+ $var wire 8 #K io_dbg_f $end
+ $var wire 8 #L io_dbg_c $end
+ $var wire 8 #M io_dbg_d $end
+ $var wire 16 #O u_regPair $end
+ $var wire 2 #P cbOut_group $end
+ $var wire 1 #Q canTakeInterrupt $end
+ $var wire 1 #R halted $end
+ $var wire 16 #S io_dbg_sp $end
+ $var wire 16 #T u_newHL $end
+ $var wire 16 #U io_dbg_pc $end
+ $var wire 5 #W u_out_F_lo_6 $end
+ $var wire 5 #X u_out_F_lo_7 $end
+ $var wire 5 #Y u_out_F_lo_4 $end
+ $var wire 5 #Z u_out_F_lo_5 $end
+ $var wire 5 #[ u_out_F_lo_2 $end
+ $var wire 5 #\ u_out_F_lo_3 $end
+ $var wire 5 #] u_out_F_lo_1 $end
+ $var wire 5 #^ u_out_F_lo_8 $end
+ $var wire 5 #_ u_out_F_lo_9 $end
+ $var wire 1 #a mcBus_memWrite $end
+ $var wire 1 #b u_condition $end
+ $var wire 1 #c clock $end
+ $var wire 1 #d u_flagZ_1 $end
+ $var wire 1 #e u_flagZ_2 $end
+ $var wire 1 #f u_flagZ_3 $end
+ $var wire 2 #g u_out_F_hi_hi_8 $end
+ $var wire 2 #h u_out_F_hi_hi_9 $end
+ $var wire 2 #i u_out_F_hi_hi_6 $end
+ $var wire 2 #j u_out_F_hi_hi_7 $end
+ $var wire 2 #k u_out_F_hi_hi_4 $end
+ $var wire 2 #l u_out_F_hi_hi_5 $end
+ $var wire 16 #m u_offset_signed_1 $end
+ $var wire 8 #n io_ieReg $end
+ $var wire 8 #o C_sampled $end
+ $var wire 8 #p busWriteData $end
+ $var wire 16 #q u__SP $end
+ $var wire 8 #r io_dbg_IR $end
+ $var wire 8 #s L_sampled $end
+ $var wire 8 #t io_dbg_opcode $end
+ $var wire 8 #u CB_imm8 $end
+ $var wire 1 #v reset $end
+ $var wire 16 #w u_sp_signed $end
+ $var wire 1 #y IME $end
+ $var wire 8 #z IR2 $end
+ $var wire 2 #{ cbOut_out_F_hi_hi $end
+ $var wire 8 #| u_off $end
+ $var wire 3 #} u_out_F_hi $end
+ $var wire 3 #~ cbOut_out_F_hi $end
+ $var wire 5 $! u_out_F_lo $end
+ $var wire 8 $" io_dbg_tcycle $end
+ $var wire 16 $# u_HL $end
+ $var wire 16 $$ u__PC $end
+ $var wire 3 $% cbOut_bitIdx $end
+ $var wire 8 $& cbOut_operand $end
+ $var wire 2 $( u_out_F_hi_hi_2 $end
+ $var wire 2 $) u_out_F_hi_hi_3 $end
+ $var wire 2 $* u_out_F_hi_hi_1 $end
+ $var wire 8 $+ u_upperCorrect $end
+ $var wire 1 $, cbOut_isHL $end
+ $var wire 5 $- u_dst_1 $end
+ $var wire 5 $. u_dst_2 $end
+ $var wire 5 $/ u_dst_3 $end
+ $var wire 5 $0 u_dst_4 $end
+ $var wire 8 $3 D_sampled $end
+ $var wire 5 $4 cbOut_out_F_lo $end
+ $var wire 3 $5 cbOut_regIdx $end
+ $var wire 8 $6 mcBus_memReadData $end
+ $var wire 8 $8 u__L $end
+ $var wire 8 $9 u__H $end
+ $var wire 8 $: u__E $end
+ $var wire 8 $; u__F $end
+ $var wire 8 $< u__C $end
+ $var wire 8 $= u__D $end
+ $var wire 8 $> u__A $end
+ $var wire 8 $? u__B $end
+  $scope module intr $end
+   $var wire 1 "@ io_should_irq $end
+   $var wire 1 "G anyActive $end
+   $var wire 16 "H io_irq_vector $end
+   $var wire 16 "| vector $end
+   $var wire 3 #V io_irq_index $end
+   $var wire 3 #` index $end
+   $var wire 1 #x io_IME $end
+   $var wire 8 $1 io_IE $end
+   $var wire 8 $2 io_IF $end
+   $var wire 8 $7 active $end
+  $upscope $end
+  $scope module u_alu $end
+   $var wire 8 " r $end
+   $var wire 4 7 io_op $end
+   $var wire 1 < io_carryIn $end
+   $var wire 1 k io_flagZ $end
+   $var wire 1 l io_flagN $end
+   $var wire 1 m io_flagH $end
+   $var wire 1 n io_flagC $end
+   $var wire 8 "4 io_b $end
+   $var wire 8 "5 io_a $end
+   $var wire 8 "7 sum $end
+   $var wire 8 "8 diff $end
+   $var wire 8 "C sumc $end
+   $var wire 8 "p r_2 $end
+   $var wire 8 "q r_1 $end
+   $var wire 8 "r r_4 $end
+   $var wire 8 "s r_3 $end
+   $var wire 8 #N diffc $end
+   $var wire 8 $' io_out $end
+  $upscope $end
+$upscope $end
+$enddefinitions $end
+$dumpvars
+00
+b00000000 j
+04
+05
+b00000000 f
+b0000 "k
+b00000000 i
+b00000000 h
+b0000 "m
+b0000 "l
+b0000 "n
+0<
+0A
+b0000 "t
+b0000000000000000 /
+0B
+0C
+0D
+0E
+b0000000000000000 3
+0F
+b0000000000000000 2
+0G
+0I
+0J
+b0000000000000000 6
+0K
+b0000000000000000 =
+0L
+0M
+b0000000000000000 ;
+0N
+b0000000000000000 :
+0Q
+0R
+0S
+0U
+0V
+0k
+b00000000 T
+0l
+0m
+0n
+b0000 7
+b00000000 P
+b00 #{
+b0000000000000000 "?
+b0000000000000000 "A
+b0000000000000000 "B
+b00 #j
+b00 #i
+b00 #l
+b00 #k
+b00 #h
+b00 #g
+b0000000000000000 "0
+b0000000000000000 "2
+b0000000000000000 #9
+b0000000000000000 #:
+b0000000000000000 #;
+b0000000000000000 #<
+b0000000000000000 "]
+b0000000000000000 $#
+b0000000000000000 $$
+b00 $*
+0"#
+0"$
+b0000000000000000 "H
+b0000000000000000 #*
+b00 $)
+b0000000000000000 "J
+b00 $(
+b0000000000000000 "L
+b0000000000000000 #.
+0"-
+0".
+b00 #P
+b0000000000000000 #3
+b00000000 "g
+b00000000 #H
+b00000 "I
+b00000000 "f
+b00000000 #G
+b00000000 "e
+b00000000 #F
+b00000000 $'
+b00000 "K
+b00000000 "d
+b00000000 $&
+b00000000 #L
+b00000 "M
+b00000000 #K
+b00000000 "i
+b00000000 #J
+b00000000 $+
+b00000 "O
+b00000000 "h
+b00000000 #I
+b00000 "N
+0":
+b00000000 $1
+0"<
+b00000000 #N
+0"=
+b00000000 #M
+b00000000 "s
+b00000000 "r
+0"@
+b00000000 "q
+b00000000 $3
+b00000000 "p
+b00000000 $2
+b00000000 "w
+b00000000 $9
+b00000000 $8
+b00000000 "u
+b00000000 $7
+b00000000 $6
+b00 "E
+b00000000 $=
+0"G
+b00000000 $<
+0#)
+b00000000 $;
+b00000000 $:
+0#+
+0#,
+0#-
+b00000000 $?
+b00000000 $>
+0#2
+0#5
+b000 c
+0"V
+0#7
+b000 b
+0#8
+b000 e
+b000 d
+b00000000 #p
+b00000000 #o
+0#=
+b00000000 #n
+0"^
+b00000000 #t
+b00000000 #s
+b00000000 #r
+b000 W
+b000 Y
+0#E
+b000 X
+b00000000 #u
+b00000000 #|
+b00000000 #z
+b000 _
+0"j
+0$,
+b000 ^
+b000 a
+b000 `
+b00 ~
+b000 [
+b000 Z
+b000 ]
+0#Q
+b000 \
+0#R
+b00 y
+b00 x
+b00 w
+b00 v
+0"v
+b00 }
+b00 |
+0"x
+b00 {
+0"y
+b00 z
+b00 "!
+0"z
+0"{
+b00 ""
+b00 u
+b00 t
+0#a
+b00 s
+0#b
+b00 r
+0#c
+b00000 #Z
+0#d
+b00000 #Y
+b000 9
+0#e
+b00000 #\
+0#f
+b00000 #[
+b00000 #^
+b00000 #]
+b00000 #_
+b00000 $4
+b00000 #X
+b00000 #W
+b00000 $-
+0#v
+b00000 $/
+0#x
+b00000 $.
+0#y
+b00000 $0
+b00000 #B
+b00000 #A
+b00 O
+b00000 "Y
+b00000 "X
+b00000 "[
+b00000 "Z
+b00000 #@
+b00000 $!
+b00000 #?
+b00000 "Q
+b00000 "P
+b00000 "S
+b00000 "R
+b00000 "T
+b00000 "W
+b000000000 #>
+b00000000 "'
+b00000000 "&
+b00000000 "%
+b00000000 "+
+b00000000 "*
+b00000000 ")
+b00000000 "(
+b00000000 "/
+b000 #}
+b000 #~
+b00000000 ",
+b00000000 "3
+b00000000 "1
+b00000000 "7
+b00000000 "6
+b00000000 "5
+b00000000 "4
+b00000000 ";
+b00000000 "9
+b000000000 ">
+b00000000 "8
+b00000000 "C
+b00000000 #0
+b00000000 #/
+b00000000 #4
+b00000000 #1
+b00000000 "U
+b00000000 #6
+b00000000 "_
+b00000000 "\
+b00000000 "c
+b00000000 #D
+b00000000 "b
+b00000000 "a
+b00000000 "`
+b00000000 $"
+b0000000000000000 #U
+b0000000000000000 "|
+b0000000000000000 "}
+b000 #C
+b000 $%
+b00000 +
+b0000000000000000 #O
+b0000000000000000 "o
+b0000000000000000 #S
+b0000000000000000 #T
+b0000000000000000 #w
+b000 #V
+b000 $5
+b000 "~
+b000 #`
+b0000000000000000 #m
+b0000000000000000 #q
+b00000000 *
+b00000000 -
+b00000000 '
+b00000000 &
+b00000000 )
+b00000000 (
+b00000000 #
+b00000000 "
+b0000000000000000 g
+b00000000 %
+b00000000 $
+b0000 H
+b00000000 !
+b0000000000000000 q
+b0000000000000000 p
+b0000000000000000 o
+b00000000 8
+b00000000 1
+b0000000000000000 @
+b0000000000000000 ?
+b0000000000000000 >
+b000 "F
+b000 #'
+b000 #(
+b000 "D
+b000 #%
+b000 #&
+b000 ##
+b000 #$
+b000 #!
+b000 #"
+0,
+0.
+$end
+#0
+b10 $(
+b10 $)
+b10 $*
+1"j
+1#Q
+b11111111 "r
+b0000000000000001 #T
+b00000001 "s
+b100 "~
+1#b
+b10 #g
+b10 #h
+b10 #i
+b10 #j
+b10 #k
+b11 #l
+1#v
+b1111111111111111 :
+b1111111111111111 ;
+b0000000000000001 =
+b1111111111111111 >
+b1111111111111111 ?
+b10 "!
+b1111111111111111 @
+b11 ""
+1G
+b110 W
+b100 X
+b100 Z
+b100 [
+b100 \
+b100 ]
+b100 ^
+b100 #!
+b110 _
+b100 #"
+b100 `
+b100 ##
+b100 #$
+b011 b
+b100 #%
+b100 #&
+b100 #'
+b100 e
+b110 #(
+b0000000000000001 g
+b10000 "I
+b1111111111111111 "J
+1#+
+1#,
+b1111111111111111 "L
+1#-
+1k
+b1111111111111111 o
+b1111111111111111 p
+b1111111111111111 q
+b01 s
+b11111110 #6
+b10 u
+b10000 "W
+b10 w
+b11 x
+b1111111111111111 #;
+b10 y
+b10 z
+b10 |
+b10 }
+b00000001 "_
+b10 ~
+#1
+1#c
+#6
+0#c
+b00000110 $6
+1S
+0#v
+1#)
+b00000110 "9
+#11
+1#c
+b01 "E
+b00000001 $"
+0#Q
+#16
+0#c
+#21
+1#c
+b10 "E
+b00000010 $"
+#26
+0#c
+#31
+1#c
+b11 "E
+1.
+b00000011 $"
+#36
+0#c
+#41
+1#c
+b00 "E
+b00000110 "i
+b0000000000000001 #.
+b00000001 "/
+0.
+b0000000000000001 /
+b00000110 #r
+b00000110 #t
+b0000000000000001 #U
+b001 9
+b00000110 ";
+b0000000000000001 "?
+b00000000 $"
+b00000110 "`
+#46
+0#c
+b00000011 $6
+0S
+0#)
+b00000011 "9
+#51
+1#c
+b01 "E
+b00000001 $"
+#56
+0#c
+#61
+1#c
+b10 "E
+b00000010 $"
+#66
+0#c
+#71
+1#c
+b11 "E
+1.
+b00000011 $"
+#76
+0#c
+#81
+b0000000000000010 $$
+0G
+0"j
+b00000100 "/
+b00000011 "1
+b0000000000000011 "2
+b0000000000000010 #U
+b00000011 $?
+b000000011 ">
+b0000000000000010 "?
+1#c
+b00 "E
+b00000011 i
+b0000000000000011 #m
+b0000000000000000 #.
+0.
+b0000000000000000 /
+b0000000000000011 #:
+b00000011 8
+b100 9
+b0000000000000011 #<
+b00000011 #|
+b0000000000000010 "]
+b000000011 #>
+b00000000 $"
+#86
+0#c
+b00000110 $6
+1S
+1#)
+b00000110 "9
+#91
+1#c
+b01 "E
+b00000001 $"
+#96
+0#c
+#101
+1#c
+b10 "E
+b00000010 $"
+#106
+0#c
+#111
+1#c
+b11 "E
+1.
+b00000011 $"
+#116
+0#c
+#121
+1B
+b00000011 $&
+1C
+1D
+1F
+b00000011 #I
+1G
+b00000011 ")
+1"j
+b0000001100000000 #O
+b00000000 "/
+b0000001100000000 "o
+1#Q
+b00000011 P
+1#c
+b00 "E
+b00000011 $
+b00000011 f
+b0000001100000001 g
+b00000011 j
+b0000000000000010 #.
+b00000011 #/
+0.
+b0000000000000010 /
+b0000001100000000 #9
+b0000001011111111 #;
+b000 9
+1"^
+b00000000 $"
+#126
+0#c
+b00000000 $6
+0S
+0#)
+b00000000 "9
+#131
+1#c
+b01 "E
+b00000001 $"
+0#Q
+#136
+0#c
+#141
+1#c
+b10 "E
+b00000010 $"
+#146
+0#c
+#151
+1#c
+b11 "E
+1.
+b00000011 $"
+#156
+0#c
+#161
+b00000011 "b
+b0000000000000011 $$
+b00000011 "c
+b00000011 "d
+b00000011 "e
+b00000011 "f
+b00000011 "g
+b00000011 "h
+0G
+b00000000 "i
+0"j
+b00000100 "/
+b0000000000000011 #U
+b00000000 ";
+b0000000000000011 "?
+1#c
+b00 "E
+b0000000000000000 #.
+0.
+b0000000000000000 /
+b00000000 #r
+b00000000 #t
+b100 9
+b0000000000000011 "]
+b00000000 $"
+b00000000 "`
+b00000011 "a
+#166
+0#c
+b00000110 $6
+1S
+1#)
+b00000110 "9
+#171
+1#c
+b01 "E
+b00000001 $"
+#176
+0#c
+#181
+1#c
+b10 "E
+b00000010 $"
+#186
+0#c
+#191
+1#c
+b11 "E
+1.
+b00000011 $"
+#196
+0#c
+#201
+1#c
+b00 "E
+1G
+1"j
+b000 9
+b0000000000000011 #.
+b00000000 "/
+0.
+b00000000 $"
+1#Q
+b0000000000000011 /
+#206
+0#c
+b00000000 "9

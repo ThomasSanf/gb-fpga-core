@@ -29,18 +29,26 @@ class LR35902_ALU extends Module {
   io.flagH := false.B
   io.flagC := false.B
 
-  val sum  = io.a + io.b
-  val sumc = io.a + io.b + cin
+  val a9 = Cat(0.U(1.W), io.a)
+  val b9 = Cat(0.U(1.W), io.b)
+  val c9 = cin
 
-  val diff  = io.a - io.b
-  val diffc = io.a - io.b - cin
+  val sum9  = a9 + b9
+  val sumc9 = a9 + b9 + c9
+
+  val diff9  = a9 - b9
+  val diffc9 = a9 - b9 - c9
 
   // Half-carry rules:
   def halfAdd(a: UInt, b: UInt, c: UInt = 0.U): Bool =
     ((a & 0xF.U) + (b & 0xF.U) + c) > 0xF.U
 
-  def halfSub(a: UInt, b: UInt, c: UInt = 0.U): Bool =
-    ((a & 0xF.U) - (b & 0xF.U) - c) < 0.U
+  def halfSub(a: UInt, b: UInt, c: UInt = 0.U): Bool = {
+    val aNib = a(3, 0)
+    val bNib = b(3, 0)
+    aNib < (bNib +& c)   // borrow from bit 4?
+  }
+
 
   // ============================
   // Decode ALU operation
@@ -51,45 +59,49 @@ class LR35902_ALU extends Module {
     // ADD A,B    (no carry)
     // ---------------------------------------------------------------
     is(OP_ADD) {
-      io.out   := sum
-      io.flagZ := sum === 0.U
+      io.out   := sum9(7,0)
+      io.flagZ := sum9(7,0) === 0.U
       io.flagN := false.B
       io.flagH := halfAdd(io.a, io.b)
-      io.flagC := sum > 0xFF.U
+      io.flagC := sum9(8)
     }
+
 
     // ---------------------------------------------------------------
     // ADC A,B    (with carry)
     // ---------------------------------------------------------------
     is(OP_ADC) {
-      io.out   := sumc
-      io.flagZ := sumc === 0.U
+      io.out   := sumc9(7,0)
+      io.flagZ := sumc9(7,0) === 0.U
       io.flagN := false.B
       io.flagH := halfAdd(io.a, io.b, cin)
-      io.flagC := sumc > 0xFF.U
+      io.flagC := sumc9(8)
     }
+
 
     // ---------------------------------------------------------------
     // SUB A,B
     // ---------------------------------------------------------------
     is(OP_SUB) {
-      io.out   := diff
-      io.flagZ := diff === 0.U
+      io.out   := diff9(7,0)
+      io.flagZ := diff9(7,0) === 0.U
       io.flagN := true.B
       io.flagH := halfSub(io.a, io.b)
       io.flagC := io.a < io.b
     }
 
+
     // ---------------------------------------------------------------
     // SBC A,B    (subtract carry)
     // ---------------------------------------------------------------
     is(OP_SBC) {
-      io.out   := diffc
-      io.flagZ := diffc === 0.U
+      io.out   := diffc9(7,0)
+      io.flagZ := diffc9(7,0) === 0.U
       io.flagN := true.B
       io.flagH := halfSub(io.a, io.b, cin)
       io.flagC := io.a < (io.b + cin)
     }
+
 
     // ---------------------------------------------------------------
     // AND A,B
@@ -131,13 +143,15 @@ class LR35902_ALU extends Module {
     // CP A,B   (like SUB but result discarded)
     // ---------------------------------------------------------------
     is(OP_CP) {
-      val r = diff
-      io.out   := io.a        // unchanged
+      val r = diff9(7,0)
+
+      io.out   := io.a              // A unchanged
       io.flagZ := r === 0.U
       io.flagN := true.B
       io.flagH := halfSub(io.a, io.b)
-      io.flagC := io.a < io.b
+      io.flagC := io.a < io.b       // borrow
     }
+
 
     // ---------------------------------------------------------------
     // INC r    (flags same as INC B)

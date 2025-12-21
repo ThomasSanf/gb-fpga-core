@@ -1,6 +1,5 @@
 #!/bin/bash
 # build_and_run.sh - Build Verilator simulation for GameBoySoC
-
 set -e
 
 echo "╔═══════════════════════════════════════════════════╗"
@@ -40,7 +39,6 @@ echo ""
 # Step 2: Run Verilator
 echo "[2/4] Running Verilator..."
 echo "      This may take a minute..."
-
 verilator --cc --exe --build \
     -O3 \
     --x-assign fast \
@@ -53,6 +51,7 @@ verilator --cc --exe --build \
     --top-module GameBoySoC \
     generated/GameBoySoC.v \
     gameboy_sim.cpp \
+    framebuffer.cpp \
     -CFLAGS "-std=c++11 $(pkg-config --cflags sdl2) -I. -Wno-unused-parameter" \
     -LDFLAGS "$(pkg-config --libs sdl2)" \
     2>&1 | grep -E "(Warning|Error|%)" || echo "[✓] Verilator compilation complete"
@@ -76,9 +75,9 @@ if [ "$1" == "--no-run" ]; then
     echo "[4/4] Skipping execution (--no-run flag)"
     echo ""
     echo "To run manually:"
-    echo "  ./obj_dir/VGameBoySoC"
+    echo "  LD_LIBRARY_PATH=\"\" ./obj_dir/VGameBoySoC"
 else
     echo "[4/4] Running emulator..."
     echo ""
-    ./obj_dir/VGameBoySoC
+    LD_LIBRARY_PATH="" ./obj_dir/VGameBoySoC
 fi

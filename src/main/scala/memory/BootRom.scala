@@ -61,10 +61,7 @@ class BootRom extends Module {
   val inBootRange = io.address < 0x100.U
   io.valid := io.enabled && inBootRange
 
-  // Output data
-  when(io.valid) {
-    io.dataOut := bootRomData(io.address(7, 0))
-  }.otherwise {
-    io.dataOut := 0.U
-  }
+  // ALWAYS output data - let MemoryMap decide whether to use it
+  // This avoids Mux timing issues
+  io.dataOut := bootRomData(io.address(7, 0))
 }

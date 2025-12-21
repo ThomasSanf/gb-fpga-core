@@ -18,9 +18,6 @@ object Microcode {
     val H           = UInt(8.W)
     val L           = UInt(8.W)
 
-    val imm8        = UInt(8.W)
-    val imm16       = UInt(16.W)
-
     val IME         = Bool()
     val IME_pending = Bool()
 
@@ -48,10 +45,17 @@ object Microcode {
              imm8_in: UInt,
              imm16_in: UInt,
              IME_in: Bool,
+
              IME_pending_in: Bool
            ): OutBundle = {
 
     val out = Wire(new OutBundle)
+    // ------------------------------------------------------------
+    // Microcode scratch registers (NOT instruction immediates)
+    // ------------------------------------------------------------
+    val tmp8  = RegInit(0.U(8.W))
+    val tmp16 = RegInit(0.U(16.W))
+
 
     // ------------------------------------------------------------------
     // DEFAULTS
@@ -66,8 +70,6 @@ object Microcode {
     out.E     := E_in
     out.H     := H_in
     out.L     := L_in
-    out.imm8  := imm8_in
-    out.imm16 := imm16_in
 
     out.IME         := IME_in
     out.IME_pending := IME_pending_in
@@ -221,11 +223,21 @@ object Microcode {
       val dst = (IR >> 3) & 7.U
       val oldVal = readReg(dst)
 
+      val carryIn = F_in(4)   // 🔴 snapshot carry BEFORE ALU
+
       alu.io.op := OP_INC
       alu.io.a  := oldVal
       alu.io.b  := 0.U
+
       writeReg(dst, alu.io.out)
-      setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, F_in(4))
+
+      // Z, N, H from ALU — C preserved
+      setFlags(
+        alu.io.flagZ,
+        false.B,              // N must be 0
+        alu.io.flagH,
+        carryIn               // ✅ preserved Carry
+      )
 
       when(tcycle === 3.U) { out.done := true.B }
 
@@ -248,25 +260,43 @@ object Microcode {
       // INC (HL) — 3 M-cycles (0x34)
       // ----------------------------------------------------------
     }.elsewhen(IR === "h34".U) {
+      val carryIn = F_in(4) // preserve carry
+
       switch(mcycle) {
+        // M0: read (HL)
         is(0.U) {
           io.memAddr := HL
           io.memRead := true.B
-          when(tcycle === 2.U) { out.imm8 := io.memReadData }
-          when(tcycle === 3.U) { out.next_mcycle := 1.U }
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData
+            out.next_mcycle := 1.U
+          }
         }
+
+        // M1: inc it + set flags
         is(1.U) {
           alu.io.op := OP_INC
-          alu.io.a  := imm8_in
+          alu.io.a  := tmp8
           alu.io.b  := 0.U
-          setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, F_in(4))
-          when(tcycle === 2.U) { out.imm8 := alu.io.out }
-          when(tcycle === 3.U) { out.next_mcycle := 2.U }
+
+          setFlags(
+            alu.io.flagZ,
+            false.B,        // N = 0 for INC
+            alu.io.flagH,
+            carryIn
+          )
+
+          when(tcycle === 3.U) {
+            tmp8 := alu.io.out
+            out.next_mcycle := 2.U
+          }
         }
+
+        // M2: write back to (HL)
         is(2.U) {
           io.memAddr      := HL
-          io.memWrite     := true.B
-          io.memWriteData := imm8_in
+          io.memWrite     := (tcycle === 2.U)
+          io.memWriteData := tmp8
           when(tcycle === 3.U) { out.done := true.B }
         }
       }
@@ -275,28 +305,54 @@ object Microcode {
       // DEC (HL) — 3 M-cycles (0x35)
       // ----------------------------------------------------------
     }.elsewhen(IR === "h35".U) {
+      val carryIn = F_in(4) // preserve carry
+
       switch(mcycle) {
+        // M0: read (HL)
         is(0.U) {
           io.memAddr := HL
           io.memRead := true.B
-          when(tcycle === 2.U) { out.imm8 := io.memReadData }
-          when(tcycle === 3.U) { out.next_mcycle := 1.U }
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData
+            out.next_mcycle := 1.U
+          }
         }
+
+        // M1: dec it + set flags
         is(1.U) {
           alu.io.op := OP_DEC
-          alu.io.a  := imm8_in
+          alu.io.a  := tmp8
           alu.io.b  := 0.U
-          setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, F_in(4))
-          when(tcycle === 2.U) { out.imm8 := alu.io.out }
-          when(tcycle === 3.U) { out.next_mcycle := 2.U }
+
+          // flags: Z from result, N=1, H from ALU, C preserved
+          setFlags(
+            alu.io.flagZ,
+            true.B,          // N = 1 for DEC
+            alu.io.flagH,
+            carryIn
+          )
+
+          when(tcycle === 3.U) {
+            tmp8 := alu.io.out
+            out.next_mcycle := 2.U
+          }
         }
+
+        // M2: write back to (HL)
         is(2.U) {
           io.memAddr      := HL
-          io.memWrite     := true.B
-          io.memWriteData := imm8_in
+          io.memWrite     := (tcycle === 2.U)
+          io.memWriteData := tmp8
           when(tcycle === 3.U) { out.done := true.B }
         }
       }
+      // ----------------------------------------------------------
+      // 0xE9
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "hE9".U) { // JP (HL)
+      out.PC := HL
+      when(tcycle === 3.U) { out.done := true.B }
+
 
       // ----------------------------------------------------------
       // LD r,r' — 1 cycle
@@ -351,20 +407,51 @@ object Microcode {
       }
 
       // ----------------------------------------------------------
-      // LD A,(HL+) / LDI A,(HL) — 0x2A
+      // LD A,(DE) — 0x1A
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "h1A".U) {
+      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
+        io.memAddr := Cat(D_in, E_in)
+        io.memRead := true.B  // Keep reading throughout!
+      }
+      when(tcycle === 0.U) {
+       // printf(p"[LD A,(DE) T0] Setting memAddr=${Hexadecimal(Cat(D_in, E_in))} memRead=true\n")
+      }
+      when(tcycle === 3.U) {
+      //  printf(p"[LD A,(DE) T3] memAddr=${Hexadecimal(io.memAddr)} data=${Hexadecimal(io.memReadData)} DE=${Hexadecimal(Cat(D_in, E_in))}\n")
+        out.A := io.memReadData
+        out.done := true.B
+      }
+
+      // ----------------------------------------------------------
+      // LD A,(HL+) / LDI A,(HL) — 0x2A  (2 M-cycles)
+      // M0: request read at [HL], also increment HL
+      // M1: write A with latched data
       // ----------------------------------------------------------
     }.elsewhen(IR === "h2A".U) {
-      switch(tcycle) {
-        is(0.U) { io.memAddr := HL; io.memRead := true.B }
-        is(1.U) { io.memRead := true.B }
-        is(2.U) {
-          out.A := io.memReadData
+      switch(mcycle) {
+        is(0.U) {
+          io.memAddr := HL
+          io.memRead := true.B
+
+          // HL increments during this instruction (hardware does it)
           val newHL = HL + 1.U
           out.H := newHL(15, 8)
           out.L := newHL(7, 0)
+
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData     // latch read data at end of M0
+            out.next_mcycle := 1.U
+          }
         }
-        is(3.U) { out.done := true.B }
+
+        is(1.U) {
+          // just commit A in M1
+          out.A := tmp8
+          when(tcycle === 3.U) { out.done := true.B }
+        }
       }
+
 
       // ----------------------------------------------------------
       // LD A,(HL-) / LDD A,(HL) — 0x3A
@@ -386,82 +473,84 @@ object Microcode {
       // LD (HL+),A / LDI (HL),A — 0x22
       // ----------------------------------------------------------
     }.elsewhen(IR === "h22".U) {
-      // LD (HL+),A - MUST compute HL outside tcycle check!
+      val HL = Cat(H_in, L_in)
       val newHL = HL + 1.U
       out.H := newHL(15, 8)
       out.L := newHL(7, 0)
 
-      when(tcycle === 0.U) {
-        io.memAddr      := HL
-        io.memWrite     := true.B
-        io.memWriteData := A_in
-      }
+      io.memAddr      := HL
+      io.memWriteData := A_in
+      io.memWrite     := (tcycle === 2.U)
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
       // LD (HL-),A / LDD (HL),A — 0x32
       // ----------------------------------------------------------
     }.elsewhen(IR === "h32".U) {
-      // FIX: Compute HL decrement OUTSIDE tcycle block
+      val HL = Cat(H_in, L_in)
       val newHL = HL - 1.U
       out.H := newHL(15, 8)
       out.L := newHL(7, 0)
 
-      when(tcycle === 0.U) {
-        io.memAddr      := HL
-        io.memWrite     := true.B
-        io.memWriteData := A_in
-      }
+      io.memAddr      := HL
+      io.memWriteData := A_in
+      io.memWrite     := (tcycle === 2.U)
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
       // LD A,(C) / LD A,(0xFF00+C) — 0xF2
       // ----------------------------------------------------------
     }.elsewhen(IR === "hF2".U) {
-      switch(tcycle) {
+      val addr = Cat("hFF".U(8.W), C_in)
+
+      switch(mcycle) {
         is(0.U) {
-          io.memAddr := Cat("hFF".U(8.W), C_in)
+          io.memAddr := addr
           io.memRead := true.B
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData
+            out.next_mcycle := 1.U
+          }
         }
-        is(1.U) { io.memRead := true.B }
-        is(2.U) { out.A := io.memReadData }
-        is(3.U) { out.done := true.B }
+        is(1.U) {
+          out.A := tmp8
+          when(tcycle === 3.U) { out.done := true.B }
+        }
       }
 
       // ----------------------------------------------------------
       // LD (C),A / LD (0xFF00+C),A — 0xE2
       // ----------------------------------------------------------
     }.elsewhen(IR === "hE2".U) {
-      when(tcycle === 0.U) {
-        io.memAddr      := Cat("hFF".U(8.W), C_in)
-        io.memWrite     := true.B
-        io.memWriteData := A_in
-      }
+      io.memAddr      := Cat("hFF".U(8.W), C_in)
+      io.memWriteData := A_in
+      io.memWrite     := (tcycle === 2.U)
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
       // LDH (0xFF00+n),A — 0xE0
       // ----------------------------------------------------------
     }.elsewhen(IR === "hE0".U) {
-      when(tcycle === 0.U) {
-        io.memAddr      := Cat("hFF".U(8.W), imm8_in)
-        io.memWrite     := true.B
-        io.memWriteData := A_in
-      }
+      io.memAddr      := Cat("hFF".U(8.W), imm8_in)
+      io.memWriteData := A_in
+      io.memWrite     := (tcycle === 2.U)
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
-      // LDH A,(0xFF00+n) — 0xF0
+      // LDH A,(0xFF00+n) — 0xF0  (ROBUST: 2 m-cycles)
       // ----------------------------------------------------------
     }.elsewhen(IR === "hF0".U) {
-      switch(tcycle) {
-        is(0.U) {
-          io.memAddr := Cat("hFF".U(8.W), imm8_in)
-          io.memRead := true.B
-        }
-        is(1.U) { io.memRead := true.B }
-        is(2.U) { out.A := io.memReadData }
-        is(3.U) { out.done := true.B }
+      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
+        io.memAddr := Cat(0xFF.U(8.W), imm8_in)
+        io.memRead := true.B
+      }
+      when(tcycle === 3.U) {
+        out.A := io.memReadData
+        out.done := true.B
       }
 
       // ----------------------------------------------------------
@@ -479,15 +568,64 @@ object Microcode {
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
-      // ADD A,r (0x80-0x87)
+      // ADD A,(HL) — 0x86 (needs memory read)
       // ----------------------------------------------------------
-    }.elsewhen(IR >= "h80".U && IR <= "h87".U) {
+    }.elsewhen(IR === "h86".U) {
+      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
+        io.memAddr := Cat(H_in, L_in)
+        io.memRead := true.B
+      }
+      when(tcycle === 3.U) {
+        alu.io.op := OP_ADD
+        alu.io.a  := A_in
+        alu.io.b  := io.memReadData
+        out.A     := alu.io.out
+        setFlags(alu.io.flagZ, false.B, alu.io.flagH, alu.io.flagC)
+        out.done := true.B
+      }
+
+      // ----------------------------------------------------------
+      // XOR A,(HL) — 0xAE
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "hAE".U) {
+      // Keep memory read asserted for whole cycle
+      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
+        io.memAddr := Cat(H_in, L_in)
+        io.memRead := true.B
+      }
+
+      when(tcycle === 3.U) {
+        alu.io.op := OP_XOR
+        alu.io.a  := A_in
+        alu.io.b  := io.memReadData
+
+        out.A := alu.io.out
+        setFlags(
+          alu.io.flagZ,
+          false.B,   // N = 0
+          false.B,   // H = 0
+          false.B    // C = 0
+        )
+
+        out.done := true.B
+      }
+
+
+    // ----------------------------------------------------------
+      // ADD A,r (0x80-0x85, 0x87) - REGISTERS ONLY
+      // ----------------------------------------------------------
+    }.elsewhen((IR >= "h80".U && IR <= "h85".U) || IR === "h87".U) {
       val src = readReg(IR & 7.U)
       alu.io.op := OP_ADD
       alu.io.a  := A_in
       alu.io.b  := src
       out.A     := alu.io.out
-      setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, alu.io.flagC)
+      setFlags(
+        alu.io.flagZ,
+        false.B,             // ✅ N must be 0 for ADD
+        alu.io.flagH,
+        alu.io.flagC
+      )
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
@@ -563,18 +701,40 @@ object Microcode {
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
+      // CP (HL) — 0xBE (needs memory read)
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "hBE".U) {
+      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
+        io.memAddr := Cat(H_in, L_in)
+        io.memRead := true.B
+      }
+      when(tcycle === 3.U) {
+        alu.io.op := OP_SUB
+        alu.io.a  := A_in
+        alu.io.b  := io.memReadData  // Read from memory!
+        alu.io.carryIn := false.B
+        setFlags(alu.io.flagZ, true.B, alu.io.flagH, alu.io.flagC)
+        out.done := true.B
+      }
+
+      // ----------------------------------------------------------
       // CP A,r (0xB8-0xBF)
       // ----------------------------------------------------------
-    }.elsewhen(IR >= "hB8".U && IR <= "hBF".U) {
+    }.elsewhen((IR >= "hB8".U && IR <= "hBD".U) || IR === "hBF".U) {
       val src = readReg(IR & 7.U)
       alu.io.op := OP_SUB
       alu.io.a  := A_in
       alu.io.b  := src
-      // Don't write A, just set flags
-      setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, alu.io.flagC)
+      alu.io.carryIn := false.B   // CRITICAL
+      setFlags(
+        alu.io.flagZ,
+        true.B,                  // N = 1
+        alu.io.flagH,
+        alu.io.flagC
+      )
       when(tcycle === 3.U) { out.done := true.B }
 
-      // ----------------------------------------------------------
+    // ----------------------------------------------------------
       // ADD A,n (0xC6)
       // ----------------------------------------------------------
     }.elsewhen(IR === "hC6".U) {
@@ -583,6 +743,23 @@ object Microcode {
       alu.io.b  := imm8_in
       out.A     := alu.io.out
       setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, alu.io.flagC)
+      when(tcycle === 3.U) { out.done := true.B }
+      // ----------------------------------------------------------
+      // ADC A,n (0xCE)  ← MISSING INSTRUCTION
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "hCE".U) { // ADC A,n
+      alu.io.op := OP_ADC
+      alu.io.a  := A_in
+      alu.io.b  := imm8_in
+
+      out.A := alu.io.out
+      setFlags(
+        alu.io.flagZ,
+        false.B,          // N = 0
+        alu.io.flagH,
+        alu.io.flagC
+      )
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
@@ -636,19 +813,29 @@ object Microcode {
       alu.io.op := OP_SUB
       alu.io.a  := A_in
       alu.io.b  := imm8_in
-      // Don't write A
-      setFlags(alu.io.flagZ, alu.io.flagN, alu.io.flagH, alu.io.flagC)
+      alu.io.carryIn := false.B   // CRITICAL
+      setFlags(
+        alu.io.flagZ,
+        true.B,
+        alu.io.flagH,
+        alu.io.flagC
+      )
       when(tcycle === 3.U) { out.done := true.B }
 
-      // ----------------------------------------------------------
+    // ----------------------------------------------------------
       // JR e (0x18)
       // ----------------------------------------------------------
     }.elsewhen(IR === "h18".U) {
-      val off = Cat(imm8_in(7), imm8_in).asSInt
-      out.PC  := (PC_in.asSInt + off).asUInt
-      when(tcycle === 3.U) { out.done := true.B }
+      val off = imm8_in.asSInt
+      when(tcycle === 3.U) {
+        out.PC := (PC_in.asSInt + off).asUInt
+        out.done := true.B
+      }
 
-      // ----------------------------------------------------------
+
+
+
+    // ----------------------------------------------------------
       // STOP (0x10)
       // ----------------------------------------------------------
     }.elsewhen(IR === "h10".U) {
@@ -691,40 +878,46 @@ object Microcode {
       }
 
       // ----------------------------------------------------------
-      // POP rr — Pop from stack (0xC1, 0xD1, 0xE1, 0xF1)
-      // FIX: Make all outputs unconditional for stable writeback at T3
+      // POP rr — 0xC1, 0xD1, 0xE1, 0xF1
+      // M0: read LOW from [SP], SP++
+      // M1: read HIGH from [SP], SP++, write rr
       // ----------------------------------------------------------
     }.elsewhen((IR & "hCF".U) === "hC1".U) {
       val rr = (IR >> 4) & 3.U
 
       switch(mcycle) {
+        // M0: LOW byte
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          out.imm8 := io.memReadData          // FIX: Unconditional
-          out.SP := SP_in + 1.U               // FIX: Unconditional
           when(tcycle === 3.U) {
+            tmp8 := io.memReadData          // LOW
+            out.SP := SP_in + 1.U
             out.next_mcycle := 1.U
           }
         }
+
+        // M1: HIGH byte
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          // FIX: Write registers unconditionally (data stable for T3 writeback)
-          val low = imm8_in
-          val high = io.memReadData
-          switch(rr) {
-            is(0.U) { out.B := high; out.C := low }
-            is(1.U) { out.D := high; out.E := low }
-            is(2.U) { out.H := high; out.L := low }
-            is(3.U) { out.A := high; out.F := low }
-          }
-          out.SP := SP_in + 1.U               // FIX: Unconditional
           when(tcycle === 3.U) {
+            val low  = tmp8
+            val high = io.memReadData
+
+            switch(rr) {
+              is(0.U) { out.B := high; out.C := low }                  // BC
+              is(1.U) { out.D := high; out.E := low }                  // DE
+              is(2.U) { out.H := high; out.L := low }                  // HL
+              is(3.U) { out.A := high; out.F := (low & "hF0".U) }      // AF (lower nibble must be 0)
+            }
+
+            out.SP := SP_in + 1.U
             out.done := true.B
           }
         }
       }
+
 
       // ----------------------------------------------------------
       // CALL nn — 0xCD
@@ -755,25 +948,26 @@ object Microcode {
       }
 
 
-      // RET — 0xC9
-      // FIX: Make PC update and imm8 capture unconditional for stable writeback at T3
     }.elsewhen(IR === "hC9".U) {
       switch(mcycle) {
+
+        // M0: read LOW byte from [SP]
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          out.imm8 := io.memReadData  // FIX: Unconditional - stable for next M-cycle
           when(tcycle === 3.U) {
+            tmp8 := io.memReadData      // LOW
             out.SP := SP_in + 1.U
             out.next_mcycle := 1.U
           }
         }
+
+        // M1: read HIGH byte from [SP+1], assemble PC
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          // FIX: Make PC update unconditional - stays stable for T3 writeback
-          out.PC := Cat(io.memReadData, imm8_in)
           when(tcycle === 3.U) {
+            out.PC := Cat(io.memReadData, tmp8)   // ✅ use tmp8, NOT imm8_in
             out.SP := SP_in + 1.U
             out.done := true.B
           }
@@ -781,29 +975,33 @@ object Microcode {
       }
 
 
-      // ----------------------------------------------------------
-      // RETI — 0xD9
-      // FIX: Make PC, IME, and imm8 capture unconditional
+    // ----------------------------------------------------------
+      // RETI — 0xD9 (Return + enable interrupts)
       // ----------------------------------------------------------
     }.elsewhen(IR === "hD9".U) {
       switch(mcycle) {
+
+        // M0: read LOW byte
         is(0.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          out.imm8 := io.memReadData  // FIX: Unconditional
+
           when(tcycle === 3.U) {
-            out.SP := SP_in + 1.U
+            tmp8  := io.memReadData      // LOW byte
+            out.SP   := SP_in + 1.U
             out.next_mcycle := 1.U
           }
         }
+
+        // M1: read HIGH byte, update PC, finish
         is(1.U) {
           io.memAddr := SP_in
           io.memRead := true.B
-          // FIX: Make PC and IME updates unconditional
-          out.PC := Cat(io.memReadData, imm8_in)
-          out.IME := true.B
+
           when(tcycle === 3.U) {
-            out.SP := SP_in + 1.U
+            out.PC  := Cat(io.memReadData, tmp8) // HIGH : LOW
+            out.SP  := SP_in + 1.U
+            out.IME := true.B                       // ENABLE AFTER RETURN
             out.done := true.B
           }
         }
@@ -857,6 +1055,7 @@ object Microcode {
       val cc = (IR >> 3) & 3.U
       val flagZ = F_in(7)
       val flagC = F_in(4)
+      val off = imm8_in.asSInt
 
       val condition = MuxLookup(cc, false.B, Seq(
         0.U -> !flagZ,  // NZ
@@ -866,9 +1065,9 @@ object Microcode {
       ))
 
       when(condition) {
-        val off = Cat(imm8_in(7), imm8_in).asSInt
         out.PC := (PC_in.asSInt + off).asUInt
       }
+
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
@@ -935,35 +1134,37 @@ object Microcode {
       // Conditional RET (0xC0, 0xC8, 0xD0, 0xD8)
       // FIX: Make PC update and imm8 capture unconditional
       // ----------------------------------------------------------
-    }.elsewhen((IR & "hE7".U) === "hC0".U) {
+    }.elsewhen((IR & "hE7".U) === "hC0".U) {   // RET cc
       val cc = (IR >> 3) & 3.U
       val flagZ = F_in(7)
       val flagC = F_in(4)
 
       val condition = MuxLookup(cc, false.B, Seq(
         0.U -> !flagZ,  // NZ
-        1.U -> flagZ,   // Z
+        1.U ->  flagZ,  // Z
         2.U -> !flagC,  // NC
-        3.U -> flagC    // C
+        3.U ->  flagC   // C
       ))
 
       when(condition) {
         switch(mcycle) {
+          // M0: read LOW from [SP], SP++
           is(0.U) {
             io.memAddr := SP_in
             io.memRead := true.B
-            out.imm8 := io.memReadData  // FIX: Unconditional
             when(tcycle === 3.U) {
+              tmp8 := io.memReadData
               out.SP := SP_in + 1.U
               out.next_mcycle := 1.U
             }
           }
+
+          // M1: read HIGH from [SP], SP++, PC := high:low
           is(1.U) {
             io.memAddr := SP_in
             io.memRead := true.B
-            // FIX: Make PC update unconditional
-            out.PC := Cat(io.memReadData, imm8_in)
             when(tcycle === 3.U) {
+              out.PC := Cat(io.memReadData, tmp8)   // ✅ tmp8, not imm8_in
               out.SP := SP_in + 1.U
               out.done := true.B
             }
@@ -1056,8 +1257,47 @@ object Microcode {
       out.A := adjusted
       setFlags(adjusted === 0.U, N, false.B, newCarry)
       when(tcycle === 3.U) { out.done := true.B }
+      // ----------------------------------------------------------
+      // RLA — 0x17  (Rotate A left through Carry)
+      // Flags (non-CB): Z=0, N=0, H=0, C=old bit7
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "h17".U) {
+      when(tcycle === 3.U) {
+        val oldA = A_in
+        val oldC = F_in(4)        // carry flag bit
+        val newC = oldA(7)
 
-      // ---------------------------------------------------------------------
+        val newA = Cat(oldA(6,0), oldC)
+
+        out.A := newA
+        out.F := Cat(false.B, false.B, false.B, newC, 0.U(4.W))  // Z=0 always for RLA
+        out.done := true.B
+      }
+      // ----------------------------------------------------------
+      // RRA — 0x1F  (Rotate A right through Carry)
+      // Flags (non-CB): Z=0, N=0, H=0, C=old bit0
+      // ----------------------------------------------------------
+    }.elsewhen(IR === "h1F".U) {
+      when(tcycle === 3.U) {
+        val oldA = A_in
+        val oldC = F_in(4)
+        val newC = oldA(0)
+
+        val newA = Cat(oldC, oldA(7,1))
+
+        out.A := newA
+        out.F := Cat(
+          false.B, // Z = 0
+          false.B, // N = 0
+          false.B, // H = 0
+          newC,    // C = old bit 0
+          0.U(4.W)
+        )
+
+        out.done := true.B
+      }
+
+    // ---------------------------------------------------------------------
       // LD A,(nn) - Load A from 16-bit address (0xFA)
       // M0: Already fetched imm16 (low byte, high byte)
       // M1: Read from address imm16

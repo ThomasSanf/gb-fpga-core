@@ -35,14 +35,15 @@ VM_PREFIX = VGameBoySoC
 VM_MODPREFIX = VGameBoySoC
 # User CFLAGS (from -CFLAGS on Verilator command line)
 VM_USER_CFLAGS = \
-	-std=c++11 -I/usr/include/SDL2 -D_REENTRANT  -I. -Wno-unused-parameter \
+	-I/usr/include/SDL2 -D_REENTRANT \
 
 # User LDLIBS (from -LDFLAGS on Verilator command line)
 VM_USER_LDLIBS = \
-	-lSDL2  \
+	-lSDL2 \
 
 # User .cpp files (from .cpp's on Verilator command line)
 VM_USER_CLASSES = \
+	framebuffer \
 	gameboy_sim \
 
 # User .cpp directories (from .cpp's on Verilator command line)
@@ -59,6 +60,8 @@ include $(VERILATOR_ROOT)/include/verilated.mk
 ### Executable rules... (from --exe)
 VPATH += $(VM_USER_DIR)
 
+framebuffer.o: framebuffer.cpp
+	$(OBJCACHE) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(OPT_FAST) -c -o $@ $<
 gameboy_sim.o: gameboy_sim.cpp
 	$(OBJCACHE) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(OPT_FAST) -c -o $@ $<
 

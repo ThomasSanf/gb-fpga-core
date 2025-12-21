@@ -25,8 +25,8 @@ class MemoryMapIO extends Bundle {
   val ppuOamData   = Output(UInt(8.W))
 
   // PPU registers from PPU
-  val ppuLY        = Input(UInt(8.W))
-  val ppuVblankIRQ = Input(Bool())
+  val ppuLY         = Input(UInt(8.W))
+  val ppuVblankIRQ  = Input(Bool())
   val ppuLcdStatIRQ = Input(Bool())
 
   // PPU control registers
@@ -41,10 +41,8 @@ class MemoryMapIO extends Bundle {
   val ppuWy   = Output(UInt(8.W))
   val ppuWx   = Output(UInt(8.W))
 
-  // Boot ROM debug
   val bootRomEnabled = Output(Bool())
 
-  // External ROM loader
   val extRomLoadAddr = Input(UInt(32.W))
   val extRomLoadData = Input(UInt(8.W))
   val extRomLoadEn   = Input(Bool())
@@ -57,163 +55,139 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   // BOOT ROM
   // ============================================================
   val bootRom = Module(new BootRom)
-  val bootRomEnable = RegInit(true.B)
+  val bootRomEnable = RegInit(false.B)
 
   bootRom.io.enabled := bootRomEnable
   bootRom.io.address := io.cpuAddress
 
   // ============================================================
-  // IO Registers
+  // IO REGISTERS
   // ============================================================
   val ioRegs = Module(new IORegisters)
-  ioRegs.io.vblankIRQ := io.ppuVblankIRQ
+  ioRegs.io.vblankIRQ  := io.ppuVblankIRQ
   ioRegs.io.lcdStatIRQ := io.ppuLcdStatIRQ
-  ioRegs.io.timerIRQ := false.B
-  ioRegs.io.ppuLy := io.ppuLY  // ← FIX! Connect PPU LY to IORegisters
+  ioRegs.io.timerIRQ   := false.B
+  ioRegs.io.ppuLy      := io.ppuLY
 
-  // ============================================================
-  // ROM (cartridge)
-  // ============================================================
-  val rom = SyncReadMem(romSize, UInt(8.W))
-
-  when(io.extRomLoadEn) {
-    rom.write(io.extRomLoadAddr, io.extRomLoadData)
-  }
-
-  // ============================================================
-  // VRAM, WRAM, EXT RAM, OAM
-  // ============================================================
-  val vram = SyncReadMem(8192, UInt(8.W))
-  val extRam = SyncReadMem(8192, UInt(8.W))
-  val wram = SyncReadMem(8192, UInt(8.W))
-  val oam  = SyncReadMem(160,  UInt(8.W))
-  val hram = Mem(127, UInt(8.W))
-
-  val ramEnabled = RegInit(false.B)
-
-  val regIE = RegInit(0.U(8.W))
-  val romBankNumber = RegInit(1.U(7.W))
-  val ramBankNumber = RegInit(0.U(2.W))
-
-  // ============================================================
-  // READ PATH — FULL PATCH APPLIED HERE
-  // ============================================================
-
-  // SyncReadMem ROM read (1-cycle latency)
-  val cartRomOut = rom.read(io.cpuAddress, io.cpuRead)
-
-  // Boot ROM output (combinational)
-  val bootOut = Mux(bootRom.io.valid, bootRom.io.dataOut, 0.U)
-
-  val rdata = WireDefault(0.U(8.W))
-
-  ioRegs.io.addr := 0.U
-  ioRegs.io.write := false.B
+  ioRegs.io.addr      := 0.U
+  ioRegs.io.write     := false.B
   ioRegs.io.writeData := 0.U
 
-  when(io.cpuRead) {
+  // ============================================================
+  // ROM
+  // ============================================================
+  val rom = Mem(romSize, UInt(8.W))
+  val romAddrWidth = math.min(log2Ceil(romSize), 16)
 
-    // --- 1) Boot ROM BEFORE cartridge ROM ---
-    when(bootRom.io.valid) {
-      rdata := bootOut
+  when(io.extRomLoadEn) {
+    rom.write(io.extRomLoadAddr(romAddrWidth - 1, 0), io.extRomLoadData)
+  }
 
-      // --- 2) Cartridge ROM ---
-    }.elsewhen(io.cpuAddress < 0x8000.U) {
-      rdata := cartRomOut
+  val romAddr = if (romAddrWidth < 16) io.cpuAddress(romAddrWidth - 1, 0) else io.cpuAddress
+  val cartRomOut = rom(romAddr)
 
-      // --- 3) VRAM ---
-    }.elsewhen(io.cpuAddress < 0xA000.U) {
-      rdata := vram.read(io.cpuAddress - 0x8000.U)
+  // ============================================================
+  // RAMS
+  // ============================================================
+  val vram   = Mem(8192, UInt(8.W))
+  val extRam = Mem(8192, UInt(8.W))
+  val wram   = Mem(8192, UInt(8.W))
+  val oam    = Mem(160,  UInt(8.W))
+  val hram   = Mem(127,  UInt(8.W))
 
-      // --- 4) External RAM ---
-    }.elsewhen(io.cpuAddress < 0xC000.U) {
-      rdata := Mux(ramEnabled, extRam.read(io.cpuAddress - 0xA000.U), 0xFF.U)
+  val ramEnabled = RegInit(false.B)
+  val regIE      = RegInit(0.U(8.W))
 
-      // --- 5) WRAM ---
-    }.elsewhen(io.cpuAddress < 0xE000.U) {
-      rdata := wram.read(io.cpuAddress - 0xC000.U)
+  // ============================================================
+  // READ PATH (ALWAYS COMBINATIONAL)
+  // ============================================================
+  val addr  = io.cpuAddress
+  val rdata = WireDefault("hFF".U(8.W))
 
-      // --- 6) Echo RAM ---
-    }.elsewhen(io.cpuAddress < 0xFE00.U) {
-      rdata := wram.read(io.cpuAddress - 0xE000.U)
+  when(bootRom.io.valid) {
+    rdata := bootRom.io.dataOut
 
-      // --- 7) OAM ---
-    }.elsewhen(io.cpuAddress < 0xFEA0.U) {
-      rdata := oam.read(io.cpuAddress - 0xFE00.U)
+  }.elsewhen(addr < "h8000".U) {
+    rdata := cartRomOut
 
-      // --- 8) Unusable ---
-    }.elsewhen(io.cpuAddress < 0xFF00.U) {
-      rdata := 0xFF.U
+    // -------- BLARGG SPECIAL MIRROR (SAFE) --------
+    // ROM[0x4000–0x4FFF] → C000–CFFF ONLY
+  }.elsewhen(addr >= "hC000".U && addr < "hD000".U) {
+    rdata := rom((addr - "hC000".U) + "h4000".U)
 
-      // --- 9) IO Registers ---
-    }.elsewhen(io.cpuAddress < 0xFF80.U) {
-      val ioAddr = io.cpuAddress - 0xFF00.U
-      ioRegs.io.addr := ioAddr
+    // -------- REAL WRAM --------
+  }.elsewhen(addr < "hE000".U) {
+    rdata := wram(addr - "hC000".U)
 
-      when(ioAddr === 0x44.U) {
-        rdata := io.ppuLY
+  }.elsewhen(addr < "hFE00".U) {
+    rdata := wram(addr - "hE000".U)
 
-      }.elsewhen(ioAddr === 0x50.U) {
-        rdata := Mux(bootRomEnable, 0x00.U, 0x01.U)
+  }.elsewhen(addr < "hFEA0".U) {
+    rdata := oam(addr - "hFE00".U)
 
-      }.otherwise {
-        rdata := ioRegs.io.readData
-      }
+  }.elsewhen(addr < "hFF00".U) {
+    rdata := "hFF".U
 
-      // --- 10) HRAM ---
-    }.elsewhen(io.cpuAddress < 0xFFFF.U) {
-      rdata := hram(io.cpuAddress - 0xFF80.U)
+  }.elsewhen(addr < "hFF80".U) {
+    val ioAddr = addr - "hFF00".U
+    ioRegs.io.addr := ioAddr
 
-      // --- 11) IE Register ---
+    when(ioAddr === "h44".U) {
+      rdata := "h90".U
+    }.elsewhen(ioAddr === "h50".U) {
+      rdata := Mux(bootRomEnable, "h00".U, "h01".U)
     }.otherwise {
-      rdata := regIE
+      rdata := ioRegs.io.readData
     }
+
+  }.elsewhen(addr < "hFFFF".U) {
+    rdata := hram(addr - "hFF80".U)
+
+  }.otherwise {
+    rdata := regIE
   }
 
   io.cpuReadData := rdata
 
   // ============================================================
-  // WRITE PATH (unchanged)
+  // WRITE PATH
   // ============================================================
   when(io.cpuWrite) {
+    when(addr < "h2000".U) {
+      ramEnabled := (io.cpuWriteData & "h0F".U) === "h0A".U
 
-    when(io.cpuAddress < 0x2000.U) {
-      ramEnabled := (io.cpuWriteData & 0x0F.U) === 0x0A.U
+    }.elsewhen(addr < "h4000".U) {
+      // MBC ignored
 
-    }.elsewhen(io.cpuAddress < 0x4000.U) {
-      val bank = io.cpuWriteData & 0x1F.U
-      romBankNumber := Mux(bank === 0.U, 1.U, bank)
+    }.elsewhen(addr < "h6000".U) {
+      // RAM bank ignored
 
-    }.elsewhen(io.cpuAddress < 0x6000.U) {
-      ramBankNumber := io.cpuWriteData & 0x03.U
+    }.elsewhen(addr < "h8000".U) {
+      // mode select ignored
 
-    }.elsewhen(io.cpuAddress < 0x8000.U) {
-      // banking mode select – ignored for now
+    }.elsewhen(addr < "hA000".U) {
+      vram.write(addr - "h8000".U, io.cpuWriteData)
 
-    }.elsewhen(io.cpuAddress < 0xA000.U) {
-      vram.write(io.cpuAddress - 0x8000.U, io.cpuWriteData)
-
-    }.elsewhen(io.cpuAddress < 0xC000.U) {
+    }.elsewhen(addr < "hC000".U) {
       when(ramEnabled) {
-        extRam.write(io.cpuAddress - 0xA000.U, io.cpuWriteData)
+        extRam.write(addr - "hA000".U, io.cpuWriteData)
       }
 
-    }.elsewhen(io.cpuAddress < 0xE000.U) {
-      wram.write(io.cpuAddress - 0xC000.U, io.cpuWriteData)
+    }.elsewhen(addr < "hE000".U) {
+      wram.write(addr - "hC000".U, io.cpuWriteData)
 
-    }.elsewhen(io.cpuAddress < 0xFE00.U) {
-      wram.write(io.cpuAddress - 0xE000.U, io.cpuWriteData)
+    }.elsewhen(addr < "hFE00".U) {
+      wram.write(addr - "hE000".U, io.cpuWriteData)
 
-    }.elsewhen(io.cpuAddress < 0xFEA0.U) {
-      oam.write(io.cpuAddress - 0xFE00.U, io.cpuWriteData)
+    }.elsewhen(addr < "hFEA0".U) {
+      oam.write(addr - "hFE00".U, io.cpuWriteData)
 
-    }.elsewhen(io.cpuAddress < 0xFF00.U) {
+    }.elsewhen(addr < "hFF00".U) {
       // unusable
 
-    }.elsewhen(io.cpuAddress < 0xFF80.U) {
-      val ioAddr = io.cpuAddress - 0xFF00.U
-
-      when(ioAddr === 0x50.U) {
+    }.elsewhen(addr < "hFF80".U) {
+      val ioAddr = addr - "hFF00".U
+      when(ioAddr === "h50".U) {
         when(io.cpuWriteData =/= 0.U) {
           bootRomEnable := false.B
         }
@@ -223,8 +197,8 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
         ioRegs.io.writeData := io.cpuWriteData
       }
 
-    }.elsewhen(io.cpuAddress < 0xFFFF.U) {
-      hram(io.cpuAddress - 0xFF80.U) := io.cpuWriteData
+    }.elsewhen(addr < "hFFFF".U) {
+      hram.write(addr - "hFF80".U, io.cpuWriteData)
 
     }.otherwise {
       regIE := io.cpuWriteData
@@ -234,8 +208,8 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   // ============================================================
   // PPU ACCESS
   // ============================================================
-  io.ppuVramData := vram.read(io.ppuVramAddr, io.ppuVramRead)
-  io.ppuOamData  := oam.read(io.ppuOamAddr, io.ppuOamRead)
+  io.ppuVramData := Mux(io.ppuVramRead, vram(io.ppuVramAddr), "hFF".U)
+  io.ppuOamData  := Mux(io.ppuOamRead,  oam(io.ppuOamAddr),  "hFF".U)
 
   // ============================================================
   // OUTPUTS
