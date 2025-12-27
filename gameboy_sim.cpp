@@ -122,7 +122,7 @@ void loadROM(const char* path) {
         // STEP 1: LOAD ROM (instant memcpy, before any clocking)
         // ============================================================
         cout << "Step 1: Loading cartridge ROM (instant memcpy)..." << endl;
-        loadROM("roms/02-interrupts.gb");
+        loadROM("roms/03-opsphl.gb");
 
         // ============================================================
         // STEP 2: ASSERT RESET

@@ -12,6 +12,12 @@ class MemoryMapIO extends Bundle {
   val cpuWriteData = Input(UInt(8.W))
   val cpuReadData  = Output(UInt(8.W))
 
+  // ============================================================
+  // DEBUG ROM PEEK (read-only, no side effects)
+  // ============================================================
+  val dbgAddr     = Input(UInt(16.W))
+  val dbgReadData = Output(Vec(4, UInt(8.W)))
+
   // Interrupt registers
   val ieReg = Output(UInt(8.W))
   val ifReg = Output(UInt(8.W))
@@ -74,6 +80,20 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   ioRegs.io.writeData := 0.U
 
   // ============================================================
+  // TIMER
+  // ============================================================
+  val timer = Module(new Timer)
+  timer.io.enable := false.B  // will be set when accessing timer registers
+  timer.io.addr := 0.U
+  timer.io.read := false.B
+  timer.io.write := false.B
+  timer.io.wdata := 0.U
+  timer.io.tick := true.B  // You'll need to connect this to your clock divider
+
+  // Connect timer IRQ to IO registers
+  ioRegs.io.timerIRQ := timer.io.irq  // ← FIX: Connect the actual timer interrupt
+
+  // ============================================================
   // ROM
   // ============================================================
   val rom = Mem(romSize, UInt(8.W))
@@ -86,6 +106,7 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   val romAddr = if (romAddrWidth < 16) io.cpuAddress(romAddrWidth - 1, 0) else io.cpuAddress
   val cartRomOut = rom(romAddr)
 
+
   // ============================================================
   // RAMS
   // ============================================================
@@ -97,6 +118,38 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
 
   val ramEnabled = RegInit(false.B)
   val regIE      = RegInit(0.U(8.W))
+
+  // ============================================================
+  // DEBUG ROM LOOKAHEAD (PC, PC+1, PC+2, PC+3)
+  // NOTE: debug reads ONLY cartridge ROM (no Boot ROM)
+  // ============================================================
+  for (i <- 0 until 4) {
+    val a = io.dbgAddr + i.U
+
+    when(a < "h8000".U) {
+      // Cartridge ROM
+      val ra =
+        if (romAddrWidth < 16) a(romAddrWidth - 1, 0)
+        else a
+      io.dbgReadData(i) := rom(ra)
+
+    }.elsewhen(a >= "hC000".U && a < "hD000".U) {
+        // BLARGG ROM MIRROR: ROM[4000–4FFF] → C000–CFFF
+        io.dbgReadData(i) := rom((a - "hC000".U) + "h4000".U)
+
+      }.elsewhen(a >= "hD000".U && a < "hE000".U) {
+        // REAL WRAM
+        io.dbgReadData(i) := wram(a - "hC000".U)
+      }
+      .elsewhen(a >= "hE000".U && a < "hFE00".U) {
+      // WRAM mirror
+      io.dbgReadData(i) := wram(a - "hE000".U)
+
+    }.otherwise {
+      // Anything else → unknown / not relevant for instruction fetch
+      io.dbgReadData(i) := "h00".U
+    }
+  }
 
   // ============================================================
   // READ PATH (ALWAYS COMBINATIONAL)
@@ -131,9 +184,14 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
   }.elsewhen(addr < "hFF80".U) {
     val ioAddr = addr - "hFF00".U
     ioRegs.io.addr := ioAddr
-
-    when(ioAddr === "h44".U) {
+    when(ioAddr >= "h04".U && ioAddr <= "h07".U) {
+      timer.io.enable := true.B
+      timer.io.addr := ioAddr - "h04".U
+      timer.io.read := true.B
+      rdata := timer.io.rdata
+    }.elsewhen(ioAddr === "h44".U) {
       rdata := "h90".U
+
     }.elsewhen(ioAddr === "h50".U) {
       rdata := Mux(bootRomEnable, "h00".U, "h01".U)
     }.otherwise {
@@ -187,7 +245,13 @@ class MemoryMap(romSize: Int, romPath: String) extends Module {
 
     }.elsewhen(addr < "hFF80".U) {
       val ioAddr = addr - "hFF00".U
-      when(ioAddr === "h50".U) {
+      // Add timer handling
+      when(ioAddr >= "h04".U && ioAddr <= "h07".U) {
+        timer.io.enable := true.B
+        timer.io.addr := ioAddr - "h04".U
+        timer.io.write := true.B
+        timer.io.wdata := io.cpuWriteData
+      }.elsewhen(ioAddr === "h50".U) {
         when(io.cpuWriteData =/= 0.U) {
           bootRomEnable := false.B
         }

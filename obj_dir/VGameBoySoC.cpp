@@ -2,7 +2,6 @@
 // DESCRIPTION: Verilator output: Model implementation (design independent parts)
 
 #include "VGameBoySoC__pch.h"
-#include "verilated_vcd_c.h"
 
 //============================================================
 // Constructors
@@ -72,7 +71,6 @@ void VGameBoySoC::eval_step() {
     // Debug assertions
     VGameBoySoC___024root___eval_debug_assertions(&(vlSymsp->TOP));
 #endif  // VL_DEBUG
-    vlSymsp->__Vm_activity = true;
     vlSymsp->__Vm_deleter.deleteAll();
     if (VL_UNLIKELY(!vlSymsp->__Vm_didInit)) {
         vlSymsp->__Vm_didInit = true;
@@ -122,40 +120,10 @@ void VGameBoySoC::prepareClone() const { contextp()->prepareClone(); }
 void VGameBoySoC::atClone() const {
     contextp()->threadPoolpOnClone();
 }
-std::unique_ptr<VerilatedTraceConfig> VGameBoySoC::traceConfig() const {
-    return std::unique_ptr<VerilatedTraceConfig>{new VerilatedTraceConfig{false, false, false}};
-};
 
 //============================================================
 // Trace configuration
 
-void VGameBoySoC___024root__trace_decl_types(VerilatedVcd* tracep);
-
-void VGameBoySoC___024root__trace_init_top(VGameBoySoC___024root* vlSelf, VerilatedVcd* tracep);
-
-VL_ATTR_COLD static void trace_init(void* voidSelf, VerilatedVcd* tracep, uint32_t code) {
-    // Callback from tracep->open()
-    VGameBoySoC___024root* const __restrict vlSelf VL_ATTR_UNUSED = static_cast<VGameBoySoC___024root*>(voidSelf);
-    VGameBoySoC__Syms* const __restrict vlSymsp VL_ATTR_UNUSED = vlSelf->vlSymsp;
-    if (!vlSymsp->_vm_contextp__->calcUnusedSigs()) {
-        VL_FATAL_MT(__FILE__, __LINE__, __FILE__,
-            "Turning on wave traces requires Verilated::traceEverOn(true) call before time 0.");
-    }
-    vlSymsp->__Vm_baseCode = code;
-    tracep->pushPrefix(std::string{vlSymsp->name()}, VerilatedTracePrefixType::SCOPE_MODULE);
-    VGameBoySoC___024root__trace_decl_types(tracep);
-    VGameBoySoC___024root__trace_init_top(vlSelf, tracep);
-    tracep->popPrefix();
-}
-
-VL_ATTR_COLD void VGameBoySoC___024root__trace_register(VGameBoySoC___024root* vlSelf, VerilatedVcd* tracep);
-
 VL_ATTR_COLD void VGameBoySoC::trace(VerilatedVcdC* tfp, int levels, int options) {
-    if (tfp->isOpen()) {
-        vl_fatal(__FILE__, __LINE__, __FILE__,"'VGameBoySoC::trace()' shall not be called after 'VerilatedVcdC::open()'.");
-    }
-    if (false && levels && options) {}  // Prevent unused
-    tfp->spTrace()->addModel(this);
-    tfp->spTrace()->addInitCb(&trace_init, &(vlSymsp->TOP));
-    VGameBoySoC___024root__trace_register(&(vlSymsp->TOP), tfp->spTrace());
+    vl_fatal(__FILE__, __LINE__, __FILE__,"'VGameBoySoC::trace()' called on model that was Verilated without --trace option");
 }

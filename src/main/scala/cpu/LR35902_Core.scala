@@ -32,6 +32,7 @@ class LR35902_Core extends Module {
     val dbg_h = Output(UInt(8.W))
     val dbg_l = Output(UInt(8.W))
 
+    val dbgBytes = Input(Vec(4, UInt(8.W))) // [PC+0, PC+1, PC+2, PC+3]
     val dbg_state  = Output(UInt(8.W))
     val dbg_tcycle = Output(UInt(8.W))
     val dbg_mcycle = Output(UInt(8.W))
@@ -122,10 +123,12 @@ class LR35902_Core extends Module {
   // Interrupts may only be taken between instructions
   val canTakeInterrupt =
     state === sFetchOpcode &&
-      tcycle === 0.U &&
-      !halted
+      tcycle === 0.U
   val shouldIrq  = intr.io.should_irq
   val irqVector = intr.io.irq_vector
+  val irqVectorLatched = RegInit(0.U(16.W))
+  val irqIndexLatched  = RegInit(0.U(3.W))
+
 
 
   // ============================================================
@@ -169,13 +172,38 @@ class LR35902_Core extends Module {
   val busWriteData = WireDefault(0.U(8.W))
 
   // ============================================================
-  // T-CYCLE COUNTER
+  // T-CYCLE COUNTER (HARD HALT FREEZE — CORRECT)
   // ============================================================
-  when(tcycle === 3.U) {
+  val state_prev  = RegNext(state)
+  val mcycle_prev = RegNext(mcycle)
+
+  // ============================================================
+  // HALT DEBUG (ENTER / EXIT)
+  // ============================================================
+  when (state === sHalt && state_prev =/= sHalt) {
+    printf(p"\n>>> ENTER HALT at PC=${Hexadecimal(PC)} IF=${Hexadecimal(io.ifReg)} IE=${Hexadecimal(io.ieReg)} IME=$IME\n")
+  }
+
+  when (state_prev === sHalt && state =/= sHalt) {
+    printf(p"\n<<< EXIT HALT at PC=${Hexadecimal(PC)} IF=${Hexadecimal(io.ifReg)} IE=${Hexadecimal(io.ieReg)} IME=$IME\n")
+  }
+
+
+  val haltActive =
+    state === sHalt || state_prev === sHalt
+
+  when (haltActive && !((io.ieReg & io.ifReg).orR)) {
+    // FULL CLOCK FREEZE during HALT
+    tcycle := tcycle
+  }.elsewhen (state =/= state_prev || mcycle =/= mcycle_prev) {
+    tcycle := 0.U
+  }.elsewhen (tcycle === 3.U) {
     tcycle := 0.U
   }.otherwise {
     tcycle := tcycle + 1.U
   }
+
+
 
   // ============================================================
   // FSM
@@ -190,18 +218,16 @@ class LR35902_Core extends Module {
         // M0: clear IF bit (write to 0xFF0F)
         is(0.U) {
           busAddr      := "hFF0F".U
-          busWrite     := true.B
-          busWriteData := io.ifReg & ~(1.U << intr.io.irq_index)
+          busWrite     := (tcycle === 2.U)
+          busWriteData := io.ifReg & ~(1.U << irqIndexLatched)
 
-          when(tcycle === 3.U) {
-            mcycle := 1.U
-          }
+          when(tcycle === 3.U) { mcycle := 1.U }
         }
 
         // M1: push PC high
         is(1.U) {
           busAddr      := SP - 1.U
-          busWrite     := true.B
+          busWrite     := (tcycle === 2.U)
           busWriteData := PC(15,8)
 
           when(tcycle === 3.U) {
@@ -213,28 +239,33 @@ class LR35902_Core extends Module {
         // M2: push PC low + jump
         is(2.U) {
           busAddr      := SP - 1.U
-          busWrite     := true.B
+          busWrite     := (tcycle === 2.U)
           busWriteData := PC(7,0)
 
           when(tcycle === 3.U) {
             SP := SP - 1.U
-            PC := intr.io.irq_vector
+            PC := irqVectorLatched
             mcycle := 0.U
             state  := sFetchOpcode
           }
         }
       }
     }
+
     // ------------------------------------------------------------
     // OPCODE FETCH (M1)
     // ------------------------------------------------------------
     is(sFetchOpcode) {
 
-      // Interrupt entry stays here
       when (canTakeInterrupt && shouldIrq) {
+        // ✅ latch ONCE (before IF gets cleared)
+        irqVectorLatched := intr.io.irq_vector
+        irqIndexLatched  := intr.io.irq_index
+
         halted := false.B
-        IME := false.B
+        IME    := false.B
         mcycle := 0.U
+        tcycle := 0.U          // ✅ recommended: start interrupt at T0 cleanly
         state  := sInterrupt
       }.otherwise {
 
@@ -256,9 +287,14 @@ class LR35902_Core extends Module {
 
           // In the printf section:
           when(debugCounter < 80000.U) {
-            printf(p"A: ${Hexadecimal(A)} F: ${Hexadecimal(F)} B: ${Hexadecimal(B)} C: ${Hexadecimal(C)} " +
-              p"D: ${Hexadecimal(D)} E: ${Hexadecimal(E)} H: ${Hexadecimal(H)} L: ${Hexadecimal(L)} " +
-              p"SP: ${Hexadecimal(SP)} PC: ${Hexadecimal(PC)} | ${Hexadecimal(fetchedOpcode)}\n")
+            printf(
+              p"A: ${Hexadecimal(A)} F: ${Hexadecimal(F)} B: ${Hexadecimal(B)} C: ${Hexadecimal(C)} " +
+                p"D: ${Hexadecimal(D)} E: ${Hexadecimal(E)} H: ${Hexadecimal(H)} L: ${Hexadecimal(L)} " +
+                p"SP: ${Hexadecimal(SP)} PC: 00:${Hexadecimal(PC)} " +
+                p"(${Hexadecimal(io.dbgBytes(0))} ${Hexadecimal(io.dbgBytes(1))} " +
+                p"${Hexadecimal(io.dbgBytes(2))} ${Hexadecimal(io.dbgBytes(3))})\n"
+
+            )
             debugCounter := debugCounter + 1.U
           }
 
@@ -295,6 +331,9 @@ class LR35902_Core extends Module {
 
           when (fetchedOpcode === "hCB".U) {
             state := sFetchCBOpcode
+          }.elsewhen (fetchedOpcode === "h76".U) {
+            state := sHalt        // ← ADD THIS: HALT goes to sHalt state
+            halted := true.B      // ← Set halted flag
           }.elsewhen (needsImm8) {
             state := sFetchImm8
           }.elsewhen (needsImm16) {
@@ -490,7 +529,9 @@ class LR35902_Core extends Module {
           }
 
           // Write to REAL registers
-          PC := u.PC
+          when(u.PC =/= PC_sampled) {
+            PC := u.PC
+          }
           SP := u.SP
           A  := u.A
           F  := u.F
@@ -514,8 +555,8 @@ class LR35902_Core extends Module {
           H_sampled  := u.H
           L_sampled  := u.L
 
-        //  imm8        := u.imm8
-        //  imm16       := u.imm16
+          //  imm8        := u.imm8
+          //  imm16       := u.imm16
           IME         := u.IME
           IME_pending := u.IME_pending
           // EI delay handling (SM83 correct)
@@ -537,16 +578,55 @@ class LR35902_Core extends Module {
     // ------------------------------------------------------------
     // HALT
     // ------------------------------------------------------------
+    // ------------------------------------------------------------
+    // HALT
+    // ------------------------------------------------------------
     is(sHalt) {
-      when (intr.io.IF.orR) {
+
+      // Any enabled interrupt pending?
+      val pending = (io.ieReg & io.ifReg).orR
+
+      when (pending) {
+        // HALT always exits on pending interrupt
         halted := false.B
-        state  := sFetchOpcode
-        mcycle := 0.U
-        tcycle := 0.U
+
+        when (IME) {
+          // --------------------------------------------------
+          // IME = 1 → TAKE INTERRUPT IMMEDIATELY
+          // --------------------------------------------------
+          irqVectorLatched := intr.io.irq_vector
+          irqIndexLatched  := intr.io.irq_index
+
+          IME    := false.B
+          mcycle := 0.U
+          tcycle := 0.U
+          state  := sInterrupt
+
+        }.otherwise {
+          // --------------------------------------------------
+          // IME = 0 → HALT BUG CASE
+          // --------------------------------------------------
+          // Resume execution WITHOUT taking interrupt
+          // PC is NOT modified (correct DMG behavior)
+          mcycle := 0.U
+          tcycle := 0.U
+          state  := sFetchOpcode
+        }
+
       }.otherwise {
+        // --------------------------------------------------
+        // REMAIN HALTED (FULLY FROZEN)
+        // --------------------------------------------------
         halted := true.B
+
+        // Freeze everything
+        // (no PC change, no bus activity)
+        mcycle := mcycle
+        tcycle := tcycle
       }
     }
+
+
 
 
 

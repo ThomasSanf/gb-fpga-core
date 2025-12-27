@@ -62,6 +62,12 @@ class GameBoySoC(romSize: Int, romPath: String) extends Module {
   val memory = Module(new MemoryMap(romSize, romPath))
 
   // ================================
+  // Debug instruction bytes (temporary)
+  // ================================
+  memory.io.dbgAddr := cpu.io.dbg_pc
+  cpu.io.dbgBytes   := memory.io.dbgReadData
+
+  // ================================
   // CPU ↔ Memory wiring
   // ================================
   memory.io.cpuAddress   := cpu.io.memAddr

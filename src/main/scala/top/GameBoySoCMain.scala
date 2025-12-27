@@ -10,7 +10,7 @@ object GameBoySoCMain extends App {
   println()
 
   val romSize = 65536   // 64kb
-  val romPath = "roms/02-interrupts.gb"
+  val romPath = "roms/03-opsphl.gb"
 
   println(s"ROM Size: ${romSize} bytes (${romSize / 1024}KB)")
   println(s"ROM Path: $romPath")

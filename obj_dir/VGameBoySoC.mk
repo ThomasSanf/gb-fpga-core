@@ -35,11 +35,11 @@ VM_PREFIX = VGameBoySoC
 VM_MODPREFIX = VGameBoySoC
 # User CFLAGS (from -CFLAGS on Verilator command line)
 VM_USER_CFLAGS = \
-	-I/usr/include/SDL2 -D_REENTRANT \
+	-std=c++11 -I/usr/include/SDL2 -D_REENTRANT  -I. -Wno-unused-parameter \
 
 # User LDLIBS (from -LDFLAGS on Verilator command line)
 VM_USER_LDLIBS = \
-	-lSDL2 \
+	-lSDL2  \
 
 # User .cpp files (from .cpp's on Verilator command line)
 VM_USER_CLASSES = \

@@ -84,17 +84,6 @@ class IORegisters extends Module {
   // ============================================================
   val regIF = RegInit(0xE1.U(8.W))
 
-  // Set interrupt bits when requested
-  when(io.vblankIRQ) {
-    regIF := regIF | 0x01.U  // VBLANK bit
-  }
-  when(io.lcdStatIRQ) {
-    regIF := regIF | 0x02.U  // LCD STAT bit
-  }
-  when(io.timerIRQ) {
-    regIF := regIF | 0x04.U  // Timer bit
-  }
-
   io.ifReg := regIF
 
   // ============================================================
@@ -156,11 +145,6 @@ class IORegisters extends Module {
     is(0x01.U) { readData := regSB }
     is(0x02.U) { readData := regSC }
 
-    // Timer
-    is(0x04.U) { readData := regDIV }
-    is(0x05.U) { readData := regTIMA }
-    is(0x06.U) { readData := regTMA }
-    is(0x07.U) { readData := regTAC }
 
     // Interrupt Flag
     is(0x0F.U) { readData := regIF }
@@ -233,12 +217,6 @@ class IORegisters extends Module {
         }
       }
 
-      // Timer
-      is(0x04.U) { regDIV := 0.U }  // Writing any value resets to 0
-      is(0x05.U) { regTIMA := io.writeData }
-      is(0x06.U) { regTMA := io.writeData }
-      is(0x07.U) { regTAC := io.writeData }
-
       // Interrupt Flag
       is(0x0F.U) { regIF := io.writeData }
 
@@ -299,4 +277,19 @@ class IORegisters extends Module {
   io.ppuObp1 := regOBP1
   io.ppuWy   := regWY
   io.ppuWx   := regWX
+
+  // ============================================================
+  // HARDWARE INTERRUPT ACCUMULATION
+  // This MUST happen AFTER the write logic to prevent race conditions
+  // where CPU writes to IF and hardware sets bits in the same cycle
+  // ============================================================
+  when(io.vblankIRQ) {
+    regIF := regIF | 0x01.U  // VBLANK bit
+  }
+  when(io.lcdStatIRQ) {
+    regIF := regIF | 0x02.U  // LCD STAT bit
+  }
+  when(io.timerIRQ) {
+    regIF := regIF | 0x04.U  // Timer bit
+  }
 }

@@ -124,7 +124,10 @@ object Microcode {
       // 0x76 — HALT
       // ----------------------------------------------------------
     }.elsewhen(IR === "h76".U) {
-      when(tcycle === 3.U) { out.done := true.B }
+      // HALT handled by CPU FSM, not microcode
+      when(tcycle === 3.U) {
+        out.done := true.B
+      }
 
       // ----------------------------------------------------------
       // LD rr,nn — 16-bit immediate load (0x01, 0x11, 0x21, 0x31)
@@ -422,51 +425,71 @@ object Microcode {
         out.A := io.memReadData
         out.done := true.B
       }
-
-      // ----------------------------------------------------------
       // LD A,(HL+) / LDI A,(HL) — 0x2A  (2 M-cycles)
-      // M0: request read at [HL], also increment HL
-      // M1: write A with latched data
-      // ----------------------------------------------------------
+      // M0: read (HL), increment HL
+      // M1: write A
     }.elsewhen(IR === "h2A".U) {
       switch(mcycle) {
+
+        // M0: read (HL) and increment HL
         is(0.U) {
           io.memAddr := HL
           io.memRead := true.B
 
-          // HL increments during this instruction (hardware does it)
-          val newHL = HL + 1.U
-          out.H := newHL(15, 8)
-          out.L := newHL(7, 0)
-
           when(tcycle === 3.U) {
-            tmp8 := io.memReadData     // latch read data at end of M0
+            tmp8 := io.memReadData
+
+            // Increment HL in M0, not M1
+            val newHL = HL + 1.U
+            out.H := newHL(15, 8)
+            out.L := newHL(7, 0)
+
             out.next_mcycle := 1.U
           }
         }
 
+        // M1: write A
         is(1.U) {
-          // just commit A in M1
           out.A := tmp8
-          when(tcycle === 3.U) { out.done := true.B }
+
+          when(tcycle === 3.U) {
+            out.done := true.B
+          }
         }
       }
 
-
       // ----------------------------------------------------------
       // LD A,(HL-) / LDD A,(HL) — 0x3A
+      // 2 M-cycles:
+      //   M0: read (HL)
+      //   M1: A <- data, HL--
       // ----------------------------------------------------------
     }.elsewhen(IR === "h3A".U) {
-      switch(tcycle) {
-        is(0.U) { io.memAddr := HL; io.memRead := true.B }
-        is(1.U) { io.memRead := true.B }
-        is(2.U) {
-          out.A := io.memReadData
+      switch(mcycle) {
+
+        // M0: read (HL)
+        is(0.U) {
+          io.memAddr := HL
+          io.memRead := true.B
+
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData
+            out.next_mcycle := 1.U
+          }
+        }
+
+        // M1: write A, decrement HL
+        is(1.U) {
+          out.A := tmp8
+
           val newHL = HL - 1.U
           out.H := newHL(15, 8)
           out.L := newHL(7, 0)
+
+          when(tcycle === 3.U) {
+            out.done := true.B
+          }
         }
-        is(3.U) { out.done := true.B }
       }
 
       // ----------------------------------------------------------
@@ -541,16 +564,33 @@ object Microcode {
       when(tcycle === 3.U) { out.done := true.B }
 
       // ----------------------------------------------------------
-      // LDH A,(0xFF00+n) — 0xF0  (ROBUST: 2 m-cycles)
+      // LDH A,(0xFF00+n) — 0xF0
+      // 2 M-cycles:
+      //   M0: read from FF00+n
+      //   M1: A <- data
       // ----------------------------------------------------------
     }.elsewhen(IR === "hF0".U) {
-      when(tcycle === 0.U || tcycle === 1.U || tcycle === 2.U || tcycle === 3.U) {
-        io.memAddr := Cat(0xFF.U(8.W), imm8_in)
-        io.memRead := true.B
-      }
-      when(tcycle === 3.U) {
-        out.A := io.memReadData
-        out.done := true.B
+      switch(mcycle) {
+
+        // M0: read from FF00+n
+        is(0.U) {
+          io.memAddr := Cat("hFF".U(8.W), imm8_in)
+          io.memRead := true.B
+
+          when(tcycle === 3.U) {
+            tmp8 := io.memReadData
+            out.next_mcycle := 1.U
+          }
+        }
+
+        // M1: write A
+        is(1.U) {
+          out.A := tmp8
+
+          when(tcycle === 3.U) {
+            out.done := true.B
+          }
+        }
       }
 
       // ----------------------------------------------------------
